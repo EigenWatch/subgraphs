@@ -1,24 +1,665 @@
-type AdminChanged @entity(immutable: true) {
-  id: Bytes!
-  previousAdmin: Bytes! # address
-  newAdmin: Bytes! # address
+# ========================================
+# EIGENWATCH RAW DATA SUBGRAPH SCHEMA
+# Focus: Direct blockchain event capture for backend processing
+# ========================================
+
+# ========================================
+# BASE EVENT INTERFACE
+# ========================================
+
+interface BaseEvent {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
   blockNumber: BigInt!
   blockTimestamp: BigInt!
-  transactionHash: Bytes!
+  contractAddress: Bytes!
 }
 
-type BeaconUpgraded @entity(immutable: true) {
-  id: Bytes!
-  beacon: Bytes! # address
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+# ========================================
+# CORE ENTITIES (Simple aggregations only)
+# ========================================
+
+type Operator @entity(immutable: false) {
+  id: ID! # operator address
+  address: Bytes!
+  delegationApprover: Bytes!
+  metadataURI: String
+
+  # Registration info
+  registeredAt: BigInt!
+  registeredAtBlock: BigInt!
+  registeredAtTransaction: Bytes!
+
+  # Simple counters (no complex calculations)
+  delegatorCount: BigInt!
+  avsRegistrationCount: BigInt!
+  operatorSetCount: BigInt!
+  slashingEventCount: BigInt!
+
+  # Relationships to events
+  registrationEvent: OperatorRegistered!
+  delegationEvents: [StakerDelegation!]! @derivedFrom(field: "operator")
+  shareEvents: [OperatorShareEvent!]! @derivedFrom(field: "operator")
+  slashingEvents: [OperatorSlashed!]! @derivedFrom(field: "operator")
+  avsRegistrations: [OperatorAVSRegistration!]! @derivedFrom(field: "operator")
+  operatorSetMemberships: [OperatorSetMembership!]!
+    @derivedFrom(field: "operator")
+  allocationEvents: [AllocationEvent!]! @derivedFrom(field: "operator")
+  commissionEvents: [OperatorCommissionEvent!]! @derivedFrom(field: "operator")
+  metadataUpdates: [OperatorMetadataUpdate!]! @derivedFrom(field: "operator")
+
+  # Timestamps
+  lastActivityAt: BigInt!
+  updatedAt: BigInt!
 }
 
-type Upgraded @entity(immutable: true) {
-  id: Bytes!
-  implementation: Bytes! # address
+type Staker @entity(immutable: false) {
+  id: ID! # staker address
+  address: Bytes!
+
+  # Current delegation (simple reference)
+  delegatedOperator: Operator
+  delegatedAt: BigInt
+
+  # Simple counters
+  totalStrategies: BigInt!
+  delegationChangeCount: BigInt!
+  withdrawalCount: BigInt!
+
+  # Relationships to events
+  delegationEvents: [StakerDelegation!]! @derivedFrom(field: "staker")
+  shareEvents: [OperatorShareEvent!]! @derivedFrom(field: "staker")
+  deposits: [Deposit!]! @derivedFrom(field: "staker")
+  withdrawals: [WithdrawalEvent!]! @derivedFrom(field: "staker")
+  eigenPods: [EigenPod!]! @derivedFrom(field: "owner")
+
+  # Timestamps
+  firstActivityAt: BigInt!
+  lastActivityAt: BigInt!
+}
+
+type AVS @entity(immutable: false) {
+  id: ID! # avs address
+  address: Bytes!
+  metadataURI: String
+
+  # Simple counters
+  operatorSetCount: BigInt!
+  totalOperatorRegistrations: BigInt!
+  rewardsSubmissionCount: BigInt!
+  slashingEventCount: BigInt!
+
+  # Relationships to events
+  operatorSets: [OperatorSet!]! @derivedFrom(field: "avs")
+  operatorRegistrations: [OperatorAVSRegistration!]! @derivedFrom(field: "avs")
+  rewardsSubmissions: [RewardsSubmission!]! @derivedFrom(field: "avs")
+  metadataUpdates: [AVSMetadataUpdate!]! @derivedFrom(field: "avs")
+
+  # Timestamps
+  createdAt: BigInt!
+  lastActivityAt: BigInt!
+  updatedAt: BigInt!
+}
+
+type Strategy @entity(immutable: false) {
+  id: ID! # strategy contract address
+  address: Bytes!
+
+  # Simple counters
+  totalDeposits: BigInt!
+  totalShares: BigInt!
+  operatorCount: BigInt!
+
+  # Relationships to events
+  deposits: [Deposit!]! @derivedFrom(field: "strategy")
+  shareEvents: [OperatorShareEvent!]! @derivedFrom(field: "strategy")
+  allocationEvents: [AllocationEvent!]! @derivedFrom(field: "strategy")
+  whitelistEvents: [StrategyWhitelistEvent!]! @derivedFrom(field: "strategy")
+
+  # Status
+  isWhitelisted: Boolean!
+  whitelistedAt: BigInt
+
+  # Timestamps
+  firstDepositAt: BigInt
+  lastActivityAt: BigInt!
+}
+
+type OperatorSet @entity(immutable: false) {
+  id: ID! # avs-operatorSetId
+  avs: AVS!
+  operatorSetId: BigInt!
+  redistributionRecipient: Bytes
+
+  # Simple counters
+  memberCount: BigInt!
+  strategyCount: BigInt!
+  allocationCount: BigInt!
+  slashingEventCount: BigInt!
+
+  # Relationships to events
+  creationEvent: OperatorSetCreated!
+  memberships: [OperatorSetMembership!]! @derivedFrom(field: "operatorSet")
+  allocationEvents: [AllocationEvent!]! @derivedFrom(field: "operatorSet")
+  slashingEvents: [OperatorSlashed!]! @derivedFrom(field: "operatorSet")
+  strategyEvents: [StrategyOperatorSetEvent!]!
+    @derivedFrom(field: "operatorSet")
+
+  # Timestamps
+  createdAt: BigInt!
+  lastActivityAt: BigInt!
+}
+
+type EigenPod @entity(immutable: false) {
+  id: ID! # pod address
+  address: Bytes!
+  owner: Staker!
+
+  # Simple metrics
+  totalShares: BigInt!
+  depositCount: BigInt!
+  withdrawalCount: BigInt!
+
+  # Relationships to events
+  deploymentEvent: PodDeployed!
+  deposits: [BeaconChainDeposit!]! @derivedFrom(field: "pod")
+  shareUpdates: [PodSharesUpdate!]! @derivedFrom(field: "pod")
+  withdrawals: [BeaconChainWithdrawal!]! @derivedFrom(field: "pod")
+
+  # Timestamps
+  deployedAt: BigInt!
+  lastActivityAt: BigInt!
+}
+
+# ========================================
+# RELATIONSHIP ENTITIES (Bridge events to entities)
+# ========================================
+
+type StakerDelegation @entity(immutable: false) {
+  id: ID! # staker-operator-timestamp
+  staker: Staker!
+  operator: Operator!
+  delegationType: DelegationType!
+
+  # Event reference
+  transactionHash: Bytes!
   blockNumber: BigInt!
   blockTimestamp: BigInt!
+  logIndex: BigInt!
+}
+
+type OperatorSetMembership @entity(immutable: false) {
+  id: ID! # operator-operatorSet-joinedAt
+  operator: Operator!
+  operatorSet: OperatorSet!
+
+  # Membership timeline
+  joinedAt: BigInt!
+  joinedAtBlock: BigInt!
+  leftAt: BigInt
+  leftAtBlock: BigInt
+  isActive: Boolean!
+
+  # Event references
+  joinEvent: OperatorAddedToOperatorSet!
+  leaveEvent: OperatorRemovedFromOperatorSet
+}
+
+type OperatorAVSRegistration @entity(immutable: false) {
+  id: ID! # operator-avs-timestamp
+  operator: Operator!
+  avs: AVS!
+  status: AVSRegistrationStatus!
+
+  # Event reference
+  event: OperatorAVSRegistrationStatusUpdated!
   transactionHash: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+}
+
+# ========================================
+# RAW EVENT ENTITIES (Direct from blockchain)
+# ========================================
+
+# DELEGATION MANAGER EVENTS
+
+type OperatorRegistered implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operator: Operator!
+  delegationApprover: Bytes!
+}
+
+type OperatorMetadataUpdate implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operator: Operator!
+  metadataURI: String!
+}
+
+type OperatorShareEvent implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operator: Operator!
+  staker: Staker!
+  strategy: Strategy!
+  shares: BigInt!
+  eventType: ShareEventType!
+}
+
+type StakerDelegationEvent implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  staker: Staker!
+  operator: Operator!
+  delegationType: DelegationType!
+}
+
+type WithdrawalEvent implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  withdrawalRoot: Bytes!
+  staker: Staker!
+  delegatedTo: Operator
+  withdrawer: Bytes!
+  nonce: BigInt!
+  startBlock: BigInt
+  strategies: [Bytes!]!
+  shares: [BigInt!]!
+  eventType: WithdrawalEventType!
+}
+
+# ALLOCATION MANAGER EVENTS
+
+type OperatorSlashed implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operator: Operator!
+  operatorSet: OperatorSet!
+  strategies: [Bytes!]!
+  wadSlashed: [BigInt!]!
+  description: String!
+}
+
+type AllocationEvent implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operator: Operator!
+  operatorSet: OperatorSet!
+  strategy: Strategy!
+  magnitude: BigInt!
+  effectBlock: BigInt!
+}
+
+type OperatorSetCreated implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operatorSet: OperatorSet!
+  avs: AVS!
+  operatorSetId: BigInt!
+}
+
+type OperatorAddedToOperatorSet implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operator: Operator!
+  operatorSet: OperatorSet!
+}
+
+type OperatorRemovedFromOperatorSet implements BaseEvent
+  @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operator: Operator!
+  operatorSet: OperatorSet!
+}
+
+type AVSMetadataUpdate implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  avs: AVS!
+  metadataURI: String!
+}
+
+type StrategyOperatorSetEvent implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operatorSet: OperatorSet!
+  strategy: Strategy!
+  eventType: StrategyOperatorSetEventType!
+}
+
+# REWARDS COORDINATOR EVENTS
+
+type RewardsSubmission implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  avs: AVS
+  submitter: Bytes!
+  submissionNonce: BigInt!
+  rewardsSubmissionHash: Bytes!
+  submissionType: RewardsSubmissionType!
+
+  # Submission details (JSON encoded from struct)
+  strategiesAndMultipliers: String! # JSON array
+  token: Bytes!
+  amount: BigInt!
+  startTimestamp: BigInt!
+  duration: BigInt!
+}
+
+type OperatorCommissionEvent implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operator: Operator!
+  caller: Bytes!
+  commissionType: CommissionType!
+  activatedAt: BigInt!
+  oldCommissionBips: BigInt!
+  newCommissionBips: BigInt!
+
+  # Target info
+  targetAVS: AVS
+  targetOperatorSet: OperatorSet
+}
+
+type DistributionRootEvent implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  rootIndex: BigInt!
+  root: Bytes
+  rewardsCalculationEndTimestamp: BigInt
+  activatedAt: BigInt
+  eventType: DistributionRootEventType!
+}
+
+type RewardsClaimed implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  root: Bytes!
+  earner: Bytes!
+  claimer: Bytes!
+  recipient: Bytes!
+  token: Bytes!
+  claimedAmount: BigInt!
+}
+
+# STRATEGY MANAGER EVENTS
+
+type Deposit implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  staker: Staker!
+  strategy: Strategy!
+  shares: BigInt!
+}
+
+type StrategyWhitelistEvent implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  strategy: Strategy!
+  eventType: StrategyWhitelistEventType!
+}
+
+# AVS DIRECTORY EVENTS
+
+type OperatorAVSRegistrationStatusUpdated implements BaseEvent
+  @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operator: Operator!
+  avs: AVS!
+  status: AVSRegistrationStatus!
+}
+
+# EIGEN POD MANAGER EVENTS
+
+type PodDeployed implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  pod: EigenPod!
+  owner: Staker!
+}
+
+type BeaconChainDeposit implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  pod: EigenPod!
+  podOwner: Staker!
+  amount: BigInt!
+}
+
+type PodSharesUpdate implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  pod: EigenPod!
+  podOwner: Staker!
+  sharesDelta: BigInt!
+  newTotalShares: BigInt
+  updateType: PodSharesUpdateType!
+}
+
+type BeaconChainWithdrawal implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  pod: EigenPod!
+  podOwner: Staker!
+  shares: BigInt!
+  nonce: BigInt!
+  delegatedAddress: Bytes!
+  withdrawer: Bytes!
+  withdrawalRoot: Bytes!
+}
+
+type BeaconChainSlashingEvent implements BaseEvent @entity(immutable: true) {
+  id: ID!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  staker: Staker!
+  prevBeaconChainSlashingFactor: BigInt!
+  newBeaconChainSlashingFactor: BigInt!
+}
+
+# ========================================
+# ENUM TYPES
+# ========================================
+
+enum DelegationType {
+  DELEGATED
+  UNDELEGATED
+  FORCE_UNDELEGATED
+}
+
+enum ShareEventType {
+  INCREASED
+  DECREASED
+}
+
+enum WithdrawalEventType {
+  QUEUED
+  COMPLETED
+}
+
+enum AVSRegistrationStatus {
+  REGISTERED
+  UNREGISTERED
+}
+
+enum StrategyOperatorSetEventType {
+  ADDED
+  REMOVED
+}
+
+enum RewardsSubmissionType {
+  AVS_REWARDS
+  REWARDS_FOR_ALL
+  REWARDS_FOR_ALL_EARNERS
+  OPERATOR_DIRECTED_AVS
+  OPERATOR_DIRECTED_OPERATOR_SET
+}
+
+enum CommissionType {
+  AVS_SPECIFIC
+  PI_SPECIFIC
+  OPERATOR_SET_SPECIFIC
+}
+
+enum DistributionRootEventType {
+  SUBMITTED
+  DISABLED
+}
+
+enum StrategyWhitelistEventType {
+  ADDED
+  REMOVED
+}
+
+enum PodSharesUpdateType {
+  SHARES_UPDATED
+  NEW_TOTAL_SHARES
 }

@@ -4,6 +4,9 @@ indexerHints:
 schema:
   file: ./schema.graphql
 dataSources:
+  # ========================================
+  # DELEGATION MANAGER - Core operator/staker relationships
+  # ========================================
   - kind: ethereum
     name: DelegationManager
     network: mainnet
@@ -16,17 +19,319 @@ dataSources:
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
-        - AdminChanged
-        - BeaconUpgraded
-        - Upgraded
+        - Operator
+        - Staker
+        - Strategy
+        - OperatorRegistered
+        - OperatorMetadataUpdate
+        - OperatorShareEvent
+        - StakerDelegation
+        - StakerDelegationEvent
+        - WithdrawalEvent
       abis:
         - name: DelegationManager
           file: ./abis/DelegationManager.json
       eventHandlers:
-        - event: AdminChanged(address,address)
-          handler: handleAdminChanged
-        - event: BeaconUpgraded(indexed address)
-          handler: handleBeaconUpgraded
-        - event: Upgraded(indexed address)
-          handler: handleUpgraded
+        # Core operator lifecycle
+        - event: OperatorRegistered(indexed address,address)
+          handler: handleOperatorRegistered
+        - event: OperatorMetadataURIUpdated(indexed address,string)
+          handler: handleOperatorMetadataURIUpdated
+
+        # Delegation relationships
+        - event: StakerDelegated(indexed address,indexed address)
+          handler: handleStakerDelegated
+        - event: StakerUndelegated(indexed address,indexed address)
+          handler: handleStakerUndelegated
+        - event: StakerForceUndelegated(indexed address,indexed address)
+          handler: handleStakerForceUndelegated
+
+        # Share tracking (critical for risk assessment)
+        - event: OperatorSharesIncreased(indexed address,address,address,uint256)
+          handler: handleOperatorSharesIncreased
+        - event: OperatorSharesDecreased(indexed address,address,address,uint256)
+          handler: handleOperatorSharesDecreased
+        - event: OperatorSharesSlashed(indexed address,address,uint256)
+          handler: handleOperatorSharesSlashed
+
+        # Withdrawal tracking
+        - event: SlashingWithdrawalQueued(bytes32,(address,address,address,uint256,uint32,address[],uint256[]),uint256[])
+          handler: handleSlashingWithdrawalQueued
+        - event: SlashingWithdrawalCompleted(bytes32)
+          handler: handleSlashingWithdrawalCompleted
+
+        # Admin events (lower priority)
+        - event: DelegationApproverUpdated(indexed address,address)
+          handler: handleDelegationApproverUpdated
+        - event: DepositScalingFactorUpdated(address,address,uint256)
+          handler: handleDepositScalingFactorUpdated
       file: ./src/delegation-manager.ts
+
+  # ========================================
+  # ALLOCATION MANAGER - Slashing and operator sets (CRITICAL)
+  # ========================================
+  - kind: ethereum
+    name: AllocationManager
+    network: mainnet
+    source:
+      address: "0x948a420b8CC1d6BFd0B6087C2E7c344a2CD0bc39"
+      abi: AllocationManager
+      startBlock: 22218956
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Operator
+        - AVS
+        - OperatorSet
+        - Strategy
+        - OperatorSlashed
+        - AllocationEvent
+        - OperatorSetCreated
+        - OperatorSetMembership
+        - OperatorAddedToOperatorSet
+        - OperatorRemovedFromOperatorSet
+        - AVSMetadataUpdate
+        - StrategyOperatorSetEvent
+      abis:
+        - name: AllocationManager
+          file: ./abis/AllocationManager.json
+      eventHandlers:
+        # CRITICAL: Slashing events (highest priority for risk assessment)
+        - event: OperatorSlashed(address,(address,uint32),address[],uint256[],string)
+          handler: handleOperatorSlashed
+
+        # Allocation behavior (important for risk analysis)
+        - event: AllocationUpdated(address,(address,uint32),address,uint64,uint32)
+          handler: handleAllocationUpdated
+        - event: AllocationDelaySet(address,uint32,uint32)
+          handler: handleAllocationDelaySet
+        - event: EncumberedMagnitudeUpdated(address,address,uint64)
+          handler: handleEncumberedMagnitudeUpdated
+        - event: MaxMagnitudeUpdated(address,address,uint64)
+          handler: handleMaxMagnitudeUpdated
+
+        # Operator Set lifecycle (critical for AVS participation tracking)
+        - event: OperatorSetCreated((address,uint32))
+          handler: handleOperatorSetCreated
+        - event: OperatorAddedToOperatorSet(indexed address,(address,uint32))
+          handler: handleOperatorAddedToOperatorSet
+        - event: OperatorRemovedFromOperatorSet(indexed address,(address,uint32))
+          handler: handleOperatorRemovedFromOperatorSet
+
+        # Strategy management
+        - event: StrategyAddedToOperatorSet((address,uint32),address)
+          handler: handleStrategyAddedToOperatorSet
+        - event: StrategyRemovedFromOperatorSet((address,uint32),address)
+          handler: handleStrategyRemovedFromOperatorSet
+
+        # AVS metadata
+        - event: AVSMetadataURIUpdated(indexed address,string)
+          handler: handleAVSMetadataURIUpdated
+
+        # Configuration
+        - event: RedistributionAddressSet((address,uint32),address)
+          handler: handleRedistributionAddressSet
+        - event: AVSRegistrarSet(address,address)
+          handler: handleAVSRegistrarSet
+      file: ./src/allocation-manager.ts
+
+  # ========================================
+  # REWARDS COORDINATOR - Commission rates and economic behavior
+  # ========================================
+  - kind: ethereum
+    name: RewardsCoordinator
+    network: mainnet
+    source:
+      address: "0x7750d328b314EfFa365A0402CcfD489B80B0adda"
+      abi: RewardsCoordinator
+      startBlock: 20341793
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Operator
+        - AVS
+        - OperatorSet
+        - RewardsSubmission
+        - OperatorCommissionEvent
+        - DistributionRootEvent
+        - RewardsClaimed
+      abis:
+        - name: RewardsCoordinator
+          file: ./abis/RewardsCoordinator.json
+      eventHandlers:
+        # Rewards submissions (track AVS economic activity)
+        - event: AVSRewardsSubmissionCreated(indexed address,indexed uint256,indexed bytes32,((address,uint96)[],address,uint256,uint32,uint32))
+          handler: handleAVSRewardsSubmissionCreated
+        - event: RewardsSubmissionForAllCreated(indexed address,indexed uint256,indexed bytes32,((address,uint96)[],address,uint256,uint32,uint32))
+          handler: handleRewardsSubmissionForAllCreated
+        - event: RewardsSubmissionForAllEarnersCreated(indexed address,indexed uint256,indexed bytes32,((address,uint96)[],address,uint256,uint32,uint32))
+          handler: handleRewardsSubmissionForAllEarnersCreated
+        - event: OperatorDirectedAVSRewardsSubmissionCreated(indexed address,indexed address,indexed bytes32,uint256,((address,uint96)[],address,(address,uint256)[],uint32,uint32,string))
+          handler: handleOperatorDirectedAVSRewardsSubmissionCreated
+        - event: OperatorDirectedOperatorSetRewardsSubmissionCreated(indexed address,indexed bytes32,(address,uint32),uint256,((address,uint96)[],address,(address,uint256)[],uint32,uint32,string))
+          handler: handleOperatorDirectedOperatorSetRewardsSubmissionCreated
+
+        # CRITICAL: Commission rate changes (key for economic behavior analysis)
+        - event: OperatorAVSSplitBipsSet(indexed address,indexed address,indexed address,uint32,uint16,uint16)
+          handler: handleOperatorAVSSplitBipsSet
+        - event: OperatorPISplitBipsSet(indexed address,indexed address,uint32,uint16,uint16)
+          handler: handleOperatorPISplitBipsSet
+        - event: OperatorSetSplitBipsSet(indexed address,indexed address,(address,uint32),uint32,uint16,uint16)
+          handler: handleOperatorSetSplitBipsSet
+
+        # Distribution and claiming
+        - event: DistributionRootSubmitted(indexed uint32,indexed bytes32,indexed uint32,uint32)
+          handler: handleDistributionRootSubmitted
+        - event: DistributionRootDisabled(indexed uint32)
+          handler: handleDistributionRootDisabled
+        - event: RewardsClaimed(bytes32,indexed address,indexed address,indexed address,address,uint256)
+          handler: handleRewardsClaimed
+
+        # System configuration
+        - event: ActivationDelaySet(uint32,uint32)
+          handler: handleActivationDelaySet
+        - event: DefaultOperatorSplitBipsSet(uint16,uint16)
+          handler: handleDefaultOperatorSplitBipsSet
+      file: ./src/rewards-coordinator.ts
+
+  # ========================================
+  # STRATEGY MANAGER - Deposits and strategy management
+  # ========================================
+  - kind: ethereum
+    name: StrategyManager
+    network: mainnet
+    source:
+      address: "0x858646372CC42E1A627fcE94aa7A7033e7CF075A"
+      abi: StrategyManager
+      startBlock: 17445564
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Staker
+        - Strategy
+        - Deposit
+        - StrategyWhitelistEvent
+      abis:
+        - name: StrategyManager
+          file: ./abis/StrategyManager.json
+      eventHandlers:
+        # Deposit tracking (understand staker behavior)
+        - event: Deposit(address,address,uint256)
+          handler: handleDeposit
+
+        # Strategy lifecycle (affects available options)
+        - event: StrategyAddedToDepositWhitelist(address)
+          handler: handleStrategyAddedToDepositWhitelist
+        - event: StrategyRemovedFromDepositWhitelist(address)
+          handler: handleStrategyRemovedFromDepositWhitelist
+
+        # Slashing resolution (post-slashing share management)
+        - event: BurnOrRedistributableSharesIncreased((address,uint32),uint256,address,uint256)
+          handler: handleBurnOrRedistributableSharesIncreased
+        - event: BurnOrRedistributableSharesDecreased((address,uint32),uint256,address,uint256)
+          handler: handleBurnOrRedistributableSharesDecreased
+        - event: BurnableSharesDecreased(address,uint256)
+          handler: handleBurnableSharesDecreased
+      file: ./src/strategy-manager.ts
+
+  # ========================================
+  # AVS DIRECTORY - Legacy operator-AVS relationships
+  # ========================================
+  - kind: ethereum
+    name: AVSDirectory
+    network: mainnet
+    source:
+      address: "0x135dda560e946695d6f155dacafc6f1f25c1f5af"
+      abi: AVSDirectory
+      startBlock: 19492759
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Operator
+        - AVS
+        - OperatorAVSRegistration
+        - OperatorAVSRegistrationStatusUpdated
+        - AVSMetadataUpdate
+      abis:
+        - name: AVSDirectory
+          file: ./abis/AVSDirectory.json
+      eventHandlers:
+        # Legacy M2 operator-AVS registration (still used by some AVS)
+        - event: OperatorAVSRegistrationStatusUpdated(indexed address,indexed address,uint8)
+          handler: handleOperatorAVSRegistrationStatusUpdated
+
+        # AVS metadata updates (duplicate of AllocationManager event)
+        - event: AVSMetadataURIUpdated(indexed address,string)
+          handler: handleAVSMetadataURIUpdated
+      file: ./src/avs-directory.ts
+
+  # ========================================
+  # EIGEN POD MANAGER - Native ETH restaking
+  # ========================================
+  - kind: ethereum
+    name: EigenPodManager
+    network: mainnet
+    source:
+      address: "0x91E677b07F7AF907ec9a428aafA9fc14a0d3A338"
+      abi: EigenPodManager
+      startBlock: 17445564
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Staker
+        - EigenPod
+        - PodDeployed
+        - BeaconChainDeposit
+        - PodSharesUpdate
+        - BeaconChainWithdrawal
+        - BeaconChainSlashingEvent
+      abis:
+        - name: EigenPodManager
+          file: ./abis/EigenPodManager.json
+      eventHandlers:
+        # Pod lifecycle
+        - event: PodDeployed(indexed address,indexed address)
+          handler: handlePodDeployed
+
+        # Native ETH deposits
+        - event: BeaconChainETHDeposited(indexed address,uint256)
+          handler: handleBeaconChainETHDeposited
+
+        # CRITICAL: Pod share updates (includes slashing effects)
+        - event: PodSharesUpdated(indexed address,int256)
+          handler: handlePodSharesUpdated
+        - event: NewTotalShares(indexed address,int256)
+          handler: handleNewTotalShares
+
+        # Withdrawals
+        - event: BeaconChainETHWithdrawalCompleted(indexed address,uint256,uint96,address,address,bytes32)
+          handler: handleBeaconChainETHWithdrawalCompleted
+
+        # CRITICAL: Beacon chain slashing (direct validator penalties)
+        - event: BeaconChainSlashingFactorDecreased(address,uint64,uint64)
+          handler: handleBeaconChainSlashingFactorDecreased
+
+        # Share burning (post-slashing resolution)
+        - event: BurnableETHSharesIncreased(uint256)
+          handler: handleBurnableETHSharesIncreased
+      file: ./src/eigen-pod-manager.ts
+# ========================================
+# CONTRACT ADDRESSES (Mainnet)
+# ========================================
+# DelegationManager: 0x39053D51B77DC0d36036Fc1fCc8Cb819df8Ef37A (Block: 17445563)
+# AllocationManager: 0x948a420b8CC1d6BFd0B6087C2E7c344a2CD0bc39 (Block: 22218956)
+# RewardsCoordinator: 0x7750d328b314EfFa365A0402CcfD489B80B0adda (Block: 20341793)
+# StrategyManager: 0x858646372CC42E1A627fcE94aa7A7033e7CF075A (Block: 17445564)
+# AVSDirectory: 0x135dda560e946695d6f155dacafc6f1f25c1f5af (Block: 19492759)
+# EigenPodManager: 0x91E677b07F7AF907ec9a428aafA9fc14a0d3A338 (Block: 17445564)
+
