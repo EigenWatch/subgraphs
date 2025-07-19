@@ -426,6 +426,11 @@ type RewardsSubmission implements BaseEvent @entity(immutable: true) {
   amount: BigInt!
   startTimestamp: BigInt!
   duration: BigInt!
+
+  # NEW: Additional fields for operator-directed submissions
+  operatorRewards: String # JSON array of operator rewards (only for operator-directed)
+  description: String # Description field (only for operator-directed)
+  operatorSetId: String
 }
 
 type OperatorCommissionEvent implements BaseEvent @entity(immutable: true) {
