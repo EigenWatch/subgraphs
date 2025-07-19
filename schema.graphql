@@ -557,7 +557,7 @@ type BeaconChainDeposit implements BaseEvent @entity(immutable: true) {
   contractAddress: Bytes!
 
   # Event data
-  pod: EigenPod!
+  pod: EigenPod
   podOwner: Staker!
   amount: BigInt!
 }
@@ -571,7 +571,7 @@ type PodSharesUpdate implements BaseEvent @entity(immutable: true) {
   contractAddress: Bytes!
 
   # Event data
-  pod: EigenPod!
+  pod: EigenPod
   podOwner: Staker!
   sharesDelta: BigInt!
   newTotalShares: BigInt
@@ -587,7 +587,7 @@ type BeaconChainWithdrawal implements BaseEvent @entity(immutable: true) {
   contractAddress: Bytes!
 
   # Event data
-  pod: EigenPod!
+  pod: EigenPod
   podOwner: Staker!
   shares: BigInt!
   nonce: BigInt!
