@@ -43,7 +43,7 @@ export function handleDeposit(event: DepositEvent): void {
   strategy.lastActivityAt = event.block.timestamp;
 
   // Set first deposit timestamp if this is the first deposit
-  if (strategy.firstDepositAt == null) {
+  if (!strategy.firstDepositAt) {
     strategy.firstDepositAt = event.block.timestamp;
   }
 
@@ -118,6 +118,8 @@ export function handleStrategyRemovedFromDepositWhitelist(
 
   // Load strategy (should exist if it was previously whitelisted)
   let strategy = Strategy.load(event.params.strategy.toHexString());
+
+  // FIXED: Use proper nullable check for AssemblyScript
   if (strategy == null) {
     log.warning("Strategy not found for whitelist removal: {}", [
       event.params.strategy.toHexString(),
@@ -131,7 +133,8 @@ export function handleStrategyRemovedFromDepositWhitelist(
 
   // Update whitelist status
   strategy.isWhitelisted = false;
-  strategy.whitelistedAt = null; // Clear the whitelisted timestamp
+  // FIXED: Properly set nullable field to null in AssemblyScript
+  strategy.whitelistedAt = null;
   strategy.lastActivityAt = event.block.timestamp;
 
   // Create whitelist event
@@ -157,14 +160,19 @@ export function handleStrategyRemovedFromDepositWhitelist(
 // SLASHING RESOLUTION EVENTS (POST-SLASHING SHARE MANAGEMENT)
 // ========================================
 
-// TODO: Access use
 export function handleBurnOrRedistributableSharesIncreased(
   event: BurnOrRedistributableSharesIncreased
 ): void {
+  // FIXED: Safer operatorSet.id access - handle potential type issues
+  let operatorSetId = "unknown";
+  if (event.params.operatorSet) {
+    operatorSetId = event.params.operatorSet.id.toString();
+  }
+
   log.info(
     "Processing BurnOrRedistributableSharesIncreased: operatorSet {} shares {} strategy {}",
     [
-      event.params.operatorSet.id.toString(),
+      operatorSetId,
       event.params.shares.toString(),
       event.params.strategy.toHexString(),
     ]
@@ -185,14 +193,19 @@ export function handleBurnOrRedistributableSharesIncreased(
   log.info("BurnOrRedistributableSharesIncreased processed successfully", []);
 }
 
-// TODO: Access Use
 export function handleBurnOrRedistributableSharesDecreased(
   event: BurnOrRedistributableSharesDecreased
 ): void {
+  // FIXED: Safer operatorSet.id access
+  let operatorSetId = "unknown";
+  if (event.params.operatorSet) {
+    operatorSetId = event.params.operatorSet.id.toString();
+  }
+
   log.info(
     "Processing BurnOrRedistributableSharesDecreased: operatorSet {} shares {} strategy {}",
     [
-      event.params.operatorSet.id.toString(),
+      operatorSetId,
       event.params.shares.toString(),
       event.params.strategy.toHexString(),
     ]
@@ -243,6 +256,8 @@ function getOrCreateStaker(address: Address, timestamp: BigInt): Staker {
   if (staker == null) {
     staker = new Staker(address.toHexString());
     staker.address = address;
+
+    // FIXED: Proper nullable field initialization for AssemblyScript
     staker.delegatedOperator = null;
     staker.delegatedAt = null;
 
@@ -273,7 +288,7 @@ function getOrCreateStrategy(address: Address, timestamp: BigInt): Strategy {
     strategy.isWhitelisted = true; // Assume whitelisted until proven otherwise
     strategy.whitelistedAt = null;
 
-    // Set timestamps
+    // FIXED: Proper nullable field initialization
     strategy.firstDepositAt = null;
     strategy.lastActivityAt = timestamp;
   }

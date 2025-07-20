@@ -296,7 +296,7 @@ type WithdrawalEvent implements BaseEvent @entity(immutable: true) {
   withdrawer: Bytes!
   nonce: BigInt!
   startBlock: BigInt
-  strategies: [Bytes!]!
+  strategies: [String!]!
   shares: [BigInt!]!
   eventType: WithdrawalEventType!
 }
@@ -314,7 +314,7 @@ type OperatorSlashed implements BaseEvent @entity(immutable: true) {
   # Event data
   operator: Operator!
   operatorSet: OperatorSet!
-  strategies: [Bytes!]!
+  strategies: [String!]!
   wadSlashed: [BigInt!]!
   description: String!
 }

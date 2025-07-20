@@ -101,7 +101,9 @@ export function handleOperatorSlashed(event: OperatorSlashed): void {
   slashingEvent.contractAddress = event.address;
   slashingEvent.operator = operator.id;
   slashingEvent.operatorSet = operatorSet.id;
-  slashingEvent.strategies = event.params.strategies;
+  slashingEvent.strategies = event.params.strategies.map<string>(
+    (strategy: Address) => strategy.toHexString()
+  );
   slashingEvent.wadSlashed = event.params.wadSlashed;
   slashingEvent.description = event.params.description;
 

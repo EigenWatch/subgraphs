@@ -580,7 +580,9 @@ export function handleSlashingWithdrawalQueued(
   withdrawalEvent.withdrawer = withdrawal.withdrawer;
   withdrawalEvent.nonce = withdrawal.nonce;
   withdrawalEvent.startBlock = withdrawal.startBlock;
-  withdrawalEvent.strategies = withdrawal.strategies;
+  withdrawalEvent.strategies = withdrawal.strategies.map<string>(
+    (strategy: Address) => strategy.toHexString()
+  );
   withdrawalEvent.shares = sharesToWithdraw;
   withdrawalEvent.eventType = "QUEUED";
 

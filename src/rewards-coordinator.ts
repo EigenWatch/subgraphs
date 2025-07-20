@@ -63,9 +63,17 @@ export function handleAVSRewardsSubmissionCreated(
 
   // Extract submission details from the struct
   let rewardsSubmission = event.params.rewardsSubmission;
-  submission.strategiesAndMultipliers = encodeStrategiesAndMultipliers(
-    rewardsSubmission.strategiesAndMultipliers
-  );
+
+  // Inline strategiesAndMultipliers encoding
+  let strategiesResult: string[] = [];
+  for (let i = 0; i < rewardsSubmission.strategiesAndMultipliers.length; i++) {
+    let item = rewardsSubmission.strategiesAndMultipliers[i];
+    strategiesResult.push(
+      `{"strategy":"${item.strategy.toHexString()}","multiplier":"${item.multiplier.toString()}"}`
+    );
+  }
+  submission.strategiesAndMultipliers = `[${strategiesResult.join(",")}]`;
+
   submission.token = rewardsSubmission.token;
   submission.amount = rewardsSubmission.amount;
   submission.startTimestamp = rewardsSubmission.startTimestamp;
@@ -103,9 +111,17 @@ export function handleRewardsSubmissionForAllCreated(
 
   // Extract submission details
   let rewardsSubmission = event.params.rewardsSubmission;
-  submission.strategiesAndMultipliers = encodeStrategiesAndMultipliers(
-    rewardsSubmission.strategiesAndMultipliers
-  );
+
+  // Inline strategiesAndMultipliers encoding
+  let strategiesResult: string[] = [];
+  for (let i = 0; i < rewardsSubmission.strategiesAndMultipliers.length; i++) {
+    let item = rewardsSubmission.strategiesAndMultipliers[i];
+    strategiesResult.push(
+      `{"strategy":"${item.strategy.toHexString()}","multiplier":"${item.multiplier.toString()}"}`
+    );
+  }
+  submission.strategiesAndMultipliers = `[${strategiesResult.join(",")}]`;
+
   submission.token = rewardsSubmission.token;
   submission.amount = rewardsSubmission.amount;
   submission.startTimestamp = rewardsSubmission.startTimestamp;
@@ -144,9 +160,17 @@ export function handleRewardsSubmissionForAllEarnersCreated(
 
   // Extract submission details
   let rewardsSubmission = event.params.rewardsSubmission;
-  submission.strategiesAndMultipliers = encodeStrategiesAndMultipliers(
-    rewardsSubmission.strategiesAndMultipliers
-  );
+
+  // Inline strategiesAndMultipliers encoding
+  let strategiesResult: string[] = [];
+  for (let i = 0; i < rewardsSubmission.strategiesAndMultipliers.length; i++) {
+    let item = rewardsSubmission.strategiesAndMultipliers[i];
+    strategiesResult.push(
+      `{"strategy":"${item.strategy.toHexString()}","multiplier":"${item.multiplier.toString()}"}`
+    );
+  }
+  submission.strategiesAndMultipliers = `[${strategiesResult.join(",")}]`;
+
   submission.token = rewardsSubmission.token;
   submission.amount = rewardsSubmission.amount;
   submission.startTimestamp = rewardsSubmission.startTimestamp;
@@ -191,20 +215,33 @@ export function handleOperatorDirectedAVSRewardsSubmissionCreated(
 
   // Extract submission details from the operator-directed struct
   let rewardsSubmission = event.params.operatorDirectedRewardsSubmission;
-  submission.strategiesAndMultipliers = encodeStrategiesAndMultipliers(
-    rewardsSubmission.strategiesAndMultipliers
-  );
+
+  // Inline strategiesAndMultipliers encoding
+  let strategiesResult: string[] = [];
+  for (let i = 0; i < rewardsSubmission.strategiesAndMultipliers.length; i++) {
+    let item = rewardsSubmission.strategiesAndMultipliers[i];
+    strategiesResult.push(
+      `{"strategy":"${item.strategy.toHexString()}","multiplier":"${item.multiplier.toString()}"}`
+    );
+  }
+  submission.strategiesAndMultipliers = `[${strategiesResult.join(",")}]`;
+
   submission.token = rewardsSubmission.token;
   submission.startTimestamp = rewardsSubmission.startTimestamp;
   submission.duration = rewardsSubmission.duration;
 
-  // NEW: Handle operator-directed specific fields
-  submission.operatorRewards = encodeOperatorRewards(
-    rewardsSubmission.operatorRewards
-  );
-  submission.amount = calculateTotalOperatorRewards(
-    rewardsSubmission.operatorRewards
-  );
+  // Inline operatorRewards encoding and total calculation
+  let rewardsResult: string[] = [];
+  let totalAmount = BigInt.fromI32(0);
+  for (let i = 0; i < rewardsSubmission.operatorRewards.length; i++) {
+    let reward = rewardsSubmission.operatorRewards[i];
+    rewardsResult.push(
+      `{"operator":"${reward.operator.toHexString()}","amount":"${reward.amount.toString()}"}`
+    );
+    totalAmount = totalAmount.plus(reward.amount);
+  }
+  submission.operatorRewards = `[${rewardsResult.join(",")}]`;
+  submission.amount = totalAmount;
   submission.description = rewardsSubmission.description;
 
   // Save entities
@@ -263,20 +300,33 @@ export function handleOperatorDirectedOperatorSetRewardsSubmissionCreated(
 
   // Extract submission details
   let rewardsSubmission = event.params.operatorDirectedRewardsSubmission;
-  submission.strategiesAndMultipliers = encodeStrategiesAndMultipliers(
-    rewardsSubmission.strategiesAndMultipliers
-  );
+
+  // Inline strategiesAndMultipliers encoding
+  let strategiesResult: string[] = [];
+  for (let i = 0; i < rewardsSubmission.strategiesAndMultipliers.length; i++) {
+    let item = rewardsSubmission.strategiesAndMultipliers[i];
+    strategiesResult.push(
+      `{"strategy":"${item.strategy.toHexString()}","multiplier":"${item.multiplier.toString()}"}`
+    );
+  }
+  submission.strategiesAndMultipliers = `[${strategiesResult.join(",")}]`;
+
   submission.token = rewardsSubmission.token;
   submission.startTimestamp = rewardsSubmission.startTimestamp;
   submission.duration = rewardsSubmission.duration;
 
-  // NEW: Handle operator-directed specific fields
-  submission.operatorRewards = encodeOperatorRewards(
-    rewardsSubmission.operatorRewards
-  );
-  submission.amount = calculateTotalOperatorRewards(
-    rewardsSubmission.operatorRewards
-  );
+  // Inline operatorRewards encoding and total calculation
+  let rewardsResult: string[] = [];
+  let totalAmount = BigInt.fromI32(0);
+  for (let i = 0; i < rewardsSubmission.operatorRewards.length; i++) {
+    let reward = rewardsSubmission.operatorRewards[i];
+    rewardsResult.push(
+      `{"operator":"${reward.operator.toHexString()}","amount":"${reward.amount.toString()}"}`
+    );
+    totalAmount = totalAmount.plus(reward.amount);
+  }
+  submission.operatorRewards = `[${rewardsResult.join(",")}]`;
+  submission.amount = totalAmount;
   submission.description = rewardsSubmission.description;
   submission.operatorSetId = operatorSetId; // Store the operator set ID
 
@@ -590,44 +640,4 @@ function getOrCreateAVS(address: Address, timestamp: BigInt): AVS {
     avs.updatedAt = timestamp;
   }
   return avs;
-}
-
-function encodeStrategiesAndMultipliers(
-  strategiesAndMultipliers: any[]
-): string {
-  // Convert the strategiesAndMultipliers array to JSON string for storage
-  // This preserves the structure for later analysis
-  let result: string[] = [];
-
-  for (let i = 0; i < strategiesAndMultipliers.length; i++) {
-    let item = strategiesAndMultipliers[i];
-    result.push(
-      `{"strategy":"${item.strategy.toHexString()}","multiplier":"${item.multiplier.toString()}"}`
-    );
-  }
-
-  return `[${result.join(",")}]`;
-}
-
-function encodeOperatorRewards(operatorRewards: any[]): string {
-  let result: string[] = [];
-
-  for (let i = 0; i < operatorRewards.length; i++) {
-    let reward = operatorRewards[i];
-    result.push(
-      `{"operator":"${reward.operator.toHexString()}","amount":"${reward.amount.toString()}"}`
-    );
-  }
-
-  return `[${result.join(",")}]`;
-}
-
-function calculateTotalOperatorRewards(operatorRewards: any[]): BigInt {
-  let total = BigInt.fromI32(0);
-
-  for (let i = 0; i < operatorRewards.length; i++) {
-    total = total.plus(operatorRewards[i].amount);
-  }
-
-  return total;
 }
