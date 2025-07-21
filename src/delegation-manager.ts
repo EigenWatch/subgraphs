@@ -37,7 +37,10 @@ export function handleOperatorRegistered(event: OperatorRegistered): void {
   ]);
 
   // Create or load operator entity
-  let operator = Operator.load(event.params.operator.toHexString());
+  let operator = getOrCreateOperatorDefensive(
+    event.params.operator,
+    event.block.timestamp
+  );
   if (operator == null) {
     operator = new Operator(event.params.operator.toHexString());
     operator.address = event.params.operator;
@@ -50,10 +53,11 @@ export function handleOperatorRegistered(event: OperatorRegistered): void {
     operator.operatorSetCount = BigInt.fromI32(0);
     operator.slashingEventCount = BigInt.fromI32(0);
 
-    // Set registration info
+    // Set registration info (now nullable)
     operator.registeredAt = event.block.timestamp;
     operator.registeredAtBlock = event.block.number;
     operator.registeredAtTransaction = event.transaction.hash;
+    operator.isRegistered = true;
 
     // Set activity timestamps
     operator.lastActivityAt = event.block.timestamp;
@@ -92,13 +96,10 @@ export function handleOperatorMetadataURIUpdated(
   ]);
 
   // Load operator (should exist from registration)
-  let operator = Operator.load(event.params.operator.toHexString());
-  if (operator == null) {
-    log.warning("Operator not found for metadata update: {}", [
-      event.params.operator.toHexString(),
-    ]);
-    return;
-  }
+  let operator = getOrCreateOperatorDefensive(
+    event.params.operator,
+    event.block.timestamp
+  );
 
   // Update operator metadata
   operator.metadataURI = event.params.metadataURI;
@@ -138,13 +139,10 @@ export function handleStakerDelegated(event: StakerDelegated): void {
   let staker = getOrCreateStaker(event.params.staker, event.block.timestamp);
 
   // Load operator (should exist)
-  let operator = Operator.load(event.params.operator.toHexString());
-  if (operator == null) {
-    log.warning("Operator not found for delegation: {}", [
-      event.params.operator.toHexString(),
-    ]);
-    return;
-  }
+  let operator = getOrCreateOperatorDefensive(
+    event.params.operator,
+    event.block.timestamp
+  );
 
   // Update staker delegation
   staker.delegatedOperator = operator.id;
@@ -209,13 +207,10 @@ export function handleStakerUndelegated(event: StakerUndelegated): void {
   }
 
   // Load operator
-  let operator = Operator.load(event.params.operator.toHexString());
-  if (operator == null) {
-    log.warning("Operator not found for undelegation: {}", [
-      event.params.operator.toHexString(),
-    ]);
-    return;
-  }
+  let operator = getOrCreateOperatorDefensive(
+    event.params.operator,
+    event.block.timestamp
+  );
 
   // Update staker - remove delegation
   staker.delegatedOperator = null;
@@ -282,13 +277,10 @@ export function handleStakerForceUndelegated(
   }
 
   // Load operator
-  let operator = Operator.load(event.params.operator.toHexString());
-  if (operator == null) {
-    log.warning("Operator not found for force undelegation: {}", [
-      event.params.operator.toHexString(),
-    ]);
-    return;
-  }
+  let operator = getOrCreateOperatorDefensive(
+    event.params.operator,
+    event.block.timestamp
+  );
 
   // Update staker - remove delegation
   staker.delegatedOperator = null;
@@ -355,19 +347,15 @@ export function handleOperatorSharesIncreased(
   );
 
   // Load entities
-  let operator = Operator.load(event.params.operator.toHexString());
+  let operator = getOrCreateOperatorDefensive(
+    event.params.operator,
+    event.block.timestamp
+  );
   let staker = getOrCreateStaker(event.params.staker, event.block.timestamp);
   let strategy = getOrCreateStrategy(
     event.params.strategy,
     event.block.timestamp
   );
-
-  if (operator == null) {
-    log.warning("Operator not found for shares increase: {}", [
-      event.params.operator.toHexString(),
-    ]);
-    return;
-  }
 
   // Update strategy counters
   strategy.totalShares = strategy.totalShares.plus(event.params.shares);
@@ -418,19 +406,15 @@ export function handleOperatorSharesDecreased(
   );
 
   // Load entities
-  let operator = Operator.load(event.params.operator.toHexString());
+  let operator = getOrCreateOperatorDefensive(
+    event.params.operator,
+    event.block.timestamp
+  );
   let staker = getOrCreateStaker(event.params.staker, event.block.timestamp);
   let strategy = getOrCreateStrategy(
     event.params.strategy,
     event.block.timestamp
   );
-
-  if (operator == null) {
-    log.warning("Operator not found for shares decrease: {}", [
-      event.params.operator.toHexString(),
-    ]);
-    return;
-  }
 
   // Update strategy counters
   strategy.totalShares = strategy.totalShares.minus(event.params.shares);
@@ -480,18 +464,14 @@ export function handleOperatorSharesSlashed(
   );
 
   // Load entities
-  let operator = Operator.load(event.params.operator.toHexString());
+  let operator = getOrCreateOperatorDefensive(
+    event.params.operator,
+    event.block.timestamp
+  );
   let strategy = getOrCreateStrategy(
     event.params.strategy,
     event.block.timestamp
   );
-
-  if (operator == null) {
-    log.warning("Operator not found for slashing: {}", [
-      event.params.operator.toHexString(),
-    ]);
-    return;
-  }
 
   // Update operator slashing counter - CRITICAL FOR RISK ASSESSMENT
   operator.slashingEventCount = operator.slashingEventCount.plus(
@@ -639,13 +619,10 @@ export function handleDelegationApproverUpdated(
     event.params.newDelegationApprover.toHexString(),
   ]);
 
-  let operator = Operator.load(event.params.operator.toHexString());
-  if (operator == null) {
-    log.warning("Operator not found for delegation approver update: {}", [
-      event.params.operator.toHexString(),
-    ]);
-    return;
-  }
+  let operator = getOrCreateOperatorDefensive(
+    event.params.operator,
+    event.block.timestamp
+  );
 
   operator.delegationApprover = event.params.newDelegationApprover;
   operator.lastActivityAt = event.block.timestamp;
@@ -731,4 +708,40 @@ function getOrCreateStrategy(address: Address, timestamp: BigInt): Strategy {
     strategy.lastActivityAt = timestamp;
   }
   return strategy;
+}
+
+function getOrCreateOperatorDefensive(
+  address: Address,
+  timestamp: BigInt
+): Operator {
+  let operator = Operator.load(address.toHexString());
+  if (operator == null) {
+    log.warning("Creating missing operator entity: {}", [
+      address.toHexString(),
+    ]);
+    operator = new Operator(address.toHexString());
+    operator.address = address;
+    operator.delegationApprover = null;
+    operator.metadataURI = null;
+
+    // Initialize counters
+    operator.delegatorCount = BigInt.fromI32(0);
+    operator.avsRegistrationCount = BigInt.fromI32(0);
+    operator.operatorSetCount = BigInt.fromI32(0);
+    operator.slashingEventCount = BigInt.fromI32(0);
+
+    // Set nullable registration info
+    operator.registeredAt = null;
+    operator.registeredAtBlock = null;
+    operator.registeredAtTransaction = null;
+    operator.registrationEvent = null;
+    operator.isRegistered = false;
+
+    // Set activity timestamps
+    operator.lastActivityAt = timestamp;
+    operator.updatedAt = timestamp;
+
+    operator.save();
+  }
+  return operator;
 }

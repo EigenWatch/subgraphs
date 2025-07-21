@@ -23,13 +23,14 @@ interface BaseEvent {
 type Operator @entity(immutable: false) {
   id: ID! # operator address
   address: Bytes!
-  delegationApprover: Bytes!
+  delegationApprover: Bytes
   metadataURI: String
 
   # Registration info
-  registeredAt: BigInt!
-  registeredAtBlock: BigInt!
-  registeredAtTransaction: Bytes!
+  registeredAt: BigInt
+  registeredAtBlock: BigInt
+  registeredAtTransaction: Bytes
+  isRegistered: Boolean!
 
   # Simple counters (no complex calculations)
   delegatorCount: BigInt!
@@ -38,7 +39,7 @@ type Operator @entity(immutable: false) {
   slashingEventCount: BigInt!
 
   # Relationships to events
-  registrationEvent: OperatorRegistered!
+  registrationEvent: OperatorRegistered
   delegationEvents: [StakerDelegation!]! @derivedFrom(field: "operator")
   shareEvents: [OperatorShareEvent!]! @derivedFrom(field: "operator")
   slashingEvents: [OperatorSlashed!]! @derivedFrom(field: "operator")
