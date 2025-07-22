@@ -36,7 +36,7 @@ import { BigInt, log, Address } from "@graphprotocol/graph-ts";
 // ========================================
 
 export function handleOperatorSlashed(event: OperatorSlashed): void {
-  log.critical("SLASHING EVENT: Operator {} slashed in set {}", [
+  log.info("SLASHING EVENT: Operator {} slashed in set {}", [
     event.params.operator.toHexString(),
     event.params.operatorSet.id.toString(),
   ]);
@@ -113,7 +113,7 @@ export function handleOperatorSlashed(event: OperatorSlashed): void {
   avs.save();
   slashingEvent.save();
 
-  log.critical("SLASHING PROCESSED: Operator {} lost {} in strategies {}", [
+  log.info("SLASHING PROCESSED: Operator {} lost {} in strategies {}", [
     operator.id,
     event.params.wadSlashed.toString(),
     event.params.strategies.toString(),

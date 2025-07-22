@@ -351,7 +351,7 @@ export function handleBeaconChainETHWithdrawalCompleted(
 export function handleBeaconChainSlashingFactorDecreased(
   event: BeaconChainSlashingFactorDecreased
 ): void {
-  log.critical("BEACON CHAIN SLASHING: Pod owner {} factor {} -> {}", [
+  log.info("BEACON CHAIN SLASHING: Pod owner {} factor {} -> {}", [
     event.params.staker.toHexString(),
     event.params.prevBeaconChainSlashingFactor.toString(),
     event.params.newBeaconChainSlashingFactor.toString(),
@@ -382,7 +382,7 @@ export function handleBeaconChainSlashingFactorDecreased(
   staker.save();
   slashingEvent.save();
 
-  log.critical(
+  log.info(
     "BEACON CHAIN SLASHING PROCESSED: Staker {} slashed on beacon chain",
     [staker.id]
   );
