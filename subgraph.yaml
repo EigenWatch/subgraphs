@@ -13,7 +13,7 @@ dataSources:
     source:
       address: "0x39053D51B77DC0d36036Fc1fCc8Cb819df8Ef37A"
       abi: DelegationManager
-      startBlock: 17445563
+      startBlock: 22600000
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -76,7 +76,7 @@ dataSources:
     source:
       address: "0x948a420b8CC1d6BFd0B6087C2E7c344a2CD0bc39"
       abi: AllocationManager
-      startBlock: 22218956
+      startBlock: 22600000
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -146,7 +146,7 @@ dataSources:
     source:
       address: "0x7750d328b314EfFa365A0402CcfD489B80B0adda"
       abi: RewardsCoordinator
-      startBlock: 20341793
+      startBlock: 22600000
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -207,7 +207,7 @@ dataSources:
     source:
       address: "0x858646372CC42E1A627fcE94aa7A7033e7CF075A"
       abi: StrategyManager
-      startBlock: 17445564
+      startBlock: 22600000
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -249,7 +249,7 @@ dataSources:
     source:
       address: "0x135dda560e946695d6f155dacafc6f1f25c1f5af"
       abi: AVSDirectory
-      startBlock: 19492759
+      startBlock: 22600000
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -282,7 +282,7 @@ dataSources:
     source:
       address: "0x91E677b07F7AF907ec9a428aafA9fc14a0d3A338"
       abi: EigenPodManager
-      startBlock: 17445564
+      startBlock: 22600000
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -310,11 +310,11 @@ dataSources:
         # CRITICAL: Pod share updates (includes slashing effects)
         - event: PodSharesUpdated(indexed address,int256)
           handler: handlePodSharesUpdated
-        - event: NewTotalShares(indexed address,int256)
+        - event: NewTotalShares(indexed address,int256)volatility_metrics
           handler: handleNewTotalShares
 
         # Withdrawals
-        - event: BeaconChainETHWithdrawalCompleted(indexed address,uint256,uint96,address,address,bytes32)
+        - event: BeaconChainETHWithdrawalCompleted(indexed address,uint256,uint96,address,address,bytes32)volatility_metrics
           handler: handleBeaconChainETHWithdrawalCompleted
 
         # CRITICAL: Beacon chain slashing (direct validator penalties)
@@ -334,4 +334,3 @@ dataSources:
 # StrategyManager: 0x858646372CC42E1A627fcE94aa7A7033e7CF075A (Block: 17445564)
 # AVSDirectory: 0x135dda560e946695d6f155dacafc6f1f25c1f5af (Block: 19492759)
 # EigenPodManager: 0x91E677b07F7AF907ec9a428aafA9fc14a0d3A338 (Block: 17445564)
-
