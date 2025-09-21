@@ -2,60 +2,55 @@ import {
   Deposit as DepositEvent,
   StrategyAddedToDepositWhitelist,
   StrategyRemovedFromDepositWhitelist,
+  StrategyWhitelisterChanged,
   BurnOrRedistributableSharesIncreased,
   BurnOrRedistributableSharesDecreased,
   BurnableSharesDecreased,
 } from "../generated/StrategyManager/StrategyManager";
 
 import {
+  // Minimal lookup entities
   Staker,
   Strategy,
+  OperatorSet,
+  // Event entities only
   Deposit,
+  StrategyWhitelisterChanged as StrategyWhitelisterChangedEntity,
   StrategyWhitelistEvent,
+  BurnOrRedistributableSharesIncreased as BurnOrRedistributableSharesIncreasedEntity,
+  BurnOrRedistributableSharesDecreased as BurnOrRedistributableSharesDecreasedEntity,
+  BurnableSharesDecreased as BurnableSharesDecreasedEntity,
+  AVS,
 } from "../generated/schema";
 
-import { BigInt, log, Address } from "@graphprotocol/graph-ts";
+import { log, Address, BigInt } from "@graphprotocol/graph-ts";
 
 // ========================================
-// DEPOSIT TRACKING (UNDERSTAND STAKER BEHAVIOR)
+// DEPOSIT EVENTS
 // ========================================
 
 export function handleDeposit(event: DepositEvent): void {
-  log.info("Processing Deposit: staker {} strategy {} shares {}", [
-    event.params.staker.toHexString(),
-    event.params.strategy.toHexString(),
-    event.params.shares.toString(),
+  log.info("Processing Deposit event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Get or create entities
-  let staker = getOrCreateStaker(event.params.staker, event.block.timestamp);
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
-  );
+  // Create minimal lookup entities if needed
+  let staker = getOrCreateStaker(event.params.staker);
+  let strategy = getOrCreateStrategy(event.params.strategy);
 
-  // Update staker metrics
-  staker.lastActivityAt = event.block.timestamp;
-
-  // Update strategy metrics
-  strategy.totalDeposits = strategy.totalDeposits.plus(BigInt.fromI32(1));
-  strategy.totalShares = strategy.totalShares.plus(event.params.shares);
-  strategy.lastActivityAt = event.block.timestamp;
-
-  // Set first deposit timestamp if this is the first deposit
-  if (!strategy.firstDepositAt) {
-    strategy.firstDepositAt = event.block.timestamp;
-  }
-
-  // Create deposit event
+  // Create pure event entity
   let deposit = new Deposit(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   deposit.transactionHash = event.transaction.hash;
   deposit.logIndex = event.logIndex;
   deposit.blockNumber = event.block.number;
   deposit.blockTimestamp = event.block.timestamp;
   deposit.contractAddress = event.address;
+
+  // Event-specific fields
   deposit.staker = staker.id;
   deposit.strategy = strategy.id;
   deposit.shares = event.params.shares;
@@ -65,40 +60,64 @@ export function handleDeposit(event: DepositEvent): void {
   strategy.save();
   deposit.save();
 
-  log.info("Deposit processed successfully", []);
+  log.info("Deposit event saved: {}", [deposit.id]);
 }
 
 // ========================================
-// STRATEGY LIFECYCLE (AFFECTS AVAILABLE OPTIONS)
+// STRATEGY WHITELIST EVENTS
 // ========================================
+
+export function handleStrategyWhitelisterChanged(
+  event: StrategyWhitelisterChanged
+): void {
+  log.info("Processing StrategyWhitelisterChanged event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
+
+  // Create pure event entity
+  let whitelisterEvent = new StrategyWhitelisterChangedEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  );
+
+  // Base event fields
+  whitelisterEvent.transactionHash = event.transaction.hash;
+  whitelisterEvent.logIndex = event.logIndex;
+  whitelisterEvent.blockNumber = event.block.number;
+  whitelisterEvent.blockTimestamp = event.block.timestamp;
+  whitelisterEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  whitelisterEvent.previousAddress = event.params.previousAddress;
+  whitelisterEvent.newAddress = event.params.newAddress;
+
+  whitelisterEvent.save();
+
+  log.info("StrategyWhitelisterChanged event saved: {}", [whitelisterEvent.id]);
+}
 
 export function handleStrategyAddedToDepositWhitelist(
   event: StrategyAddedToDepositWhitelist
 ): void {
-  log.info("Processing StrategyAddedToDepositWhitelist: strategy {}", [
-    event.params.strategy.toHexString(),
+  log.info("Processing StrategyAddedToDepositWhitelist event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Get or create strategy
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
-  );
+  // Create minimal lookup entity if needed
+  let strategy = getOrCreateStrategy(event.params.strategy);
 
-  // Update whitelist status
-  strategy.isWhitelisted = true;
-  strategy.whitelistedAt = event.block.timestamp;
-  strategy.lastActivityAt = event.block.timestamp;
-
-  // Create whitelist event
+  // Create pure event entity
   let whitelistEvent = new StrategyWhitelistEvent(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   whitelistEvent.transactionHash = event.transaction.hash;
   whitelistEvent.logIndex = event.logIndex;
   whitelistEvent.blockNumber = event.block.number;
   whitelistEvent.blockTimestamp = event.block.timestamp;
   whitelistEvent.contractAddress = event.address;
+
+  // Event-specific fields
   whitelistEvent.strategy = strategy.id;
   whitelistEvent.eventType = "ADDED";
 
@@ -106,46 +125,34 @@ export function handleStrategyAddedToDepositWhitelist(
   strategy.save();
   whitelistEvent.save();
 
-  log.info("StrategyAddedToDepositWhitelist processed successfully", []);
+  log.info("StrategyAddedToDepositWhitelist event saved: {}", [
+    whitelistEvent.id,
+  ]);
 }
 
 export function handleStrategyRemovedFromDepositWhitelist(
   event: StrategyRemovedFromDepositWhitelist
 ): void {
-  log.info("Processing StrategyRemovedFromDepositWhitelist: strategy {}", [
-    event.params.strategy.toHexString(),
+  log.info("Processing StrategyRemovedFromDepositWhitelist event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load strategy (should exist if it was previously whitelisted)
-  let strategy = Strategy.load(event.params.strategy.toHexString());
+  // Create minimal lookup entity if needed
+  let strategy = getOrCreateStrategy(event.params.strategy);
 
-  // FIXED: Use proper nullable check for AssemblyScript
-  if (strategy == null) {
-    log.warning("Strategy not found for whitelist removal: {}", [
-      event.params.strategy.toHexString(),
-    ]);
-    // Create it anyway to track the removal event
-    strategy = getOrCreateStrategy(
-      event.params.strategy,
-      event.block.timestamp
-    );
-  }
-
-  // Update whitelist status
-  strategy.isWhitelisted = false;
-  // FIXED: Properly set nullable field to null in AssemblyScript
-  strategy.whitelistedAt = null;
-  strategy.lastActivityAt = event.block.timestamp;
-
-  // Create whitelist event
+  // Create pure event entity
   let whitelistEvent = new StrategyWhitelistEvent(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   whitelistEvent.transactionHash = event.transaction.hash;
   whitelistEvent.logIndex = event.logIndex;
   whitelistEvent.blockNumber = event.block.number;
   whitelistEvent.blockTimestamp = event.block.timestamp;
   whitelistEvent.contractAddress = event.address;
+
+  // Event-specific fields
   whitelistEvent.strategy = strategy.id;
   whitelistEvent.eventType = "REMOVED";
 
@@ -153,144 +160,177 @@ export function handleStrategyRemovedFromDepositWhitelist(
   strategy.save();
   whitelistEvent.save();
 
-  log.info("StrategyRemovedFromDepositWhitelist processed successfully", []);
+  log.info("StrategyRemovedFromDepositWhitelist event saved: {}", [
+    whitelistEvent.id,
+  ]);
 }
 
 // ========================================
-// SLASHING RESOLUTION EVENTS (POST-SLASHING SHARE MANAGEMENT)
+// SLASHING RESOLUTION EVENTS
 // ========================================
 
 export function handleBurnOrRedistributableSharesIncreased(
   event: BurnOrRedistributableSharesIncreased
 ): void {
-  // FIXED: Safer operatorSet.id access - handle potential type issues
-  let operatorSetId = "unknown";
-  if (event.params.operatorSet) {
-    operatorSetId = event.params.operatorSet.id.toString();
-  }
+  log.info("Processing BurnOrRedistributableSharesIncreased event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
 
-  log.info(
-    "Processing BurnOrRedistributableSharesIncreased: operatorSet {} shares {} strategy {}",
-    [
-      operatorSetId,
-      event.params.shares.toString(),
-      event.params.strategy.toHexString(),
-    ]
+  // Create minimal lookup entities if needed
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id
+  );
+  let strategy = getOrCreateStrategy(event.params.strategy);
+
+  // Create pure event entity
+  let burnableEvent = new BurnOrRedistributableSharesIncreasedEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
 
-  // Get or create strategy
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
-  );
-  strategy.lastActivityAt = event.block.timestamp;
+  // Base event fields
+  burnableEvent.transactionHash = event.transaction.hash;
+  burnableEvent.logIndex = event.logIndex;
+  burnableEvent.blockNumber = event.block.number;
+  burnableEvent.blockTimestamp = event.block.timestamp;
+  burnableEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  burnableEvent.operatorSet = operatorSet.id;
+  burnableEvent.slashId = event.params.slashId;
+  burnableEvent.strategy = strategy.id;
+  burnableEvent.shares = event.params.shares;
+
+  // Save entities
+  operatorSet.save();
   strategy.save();
+  burnableEvent.save();
 
-  // This event indicates post-slashing share management
-  // Important for understanding the full slashing resolution process
-  // The amount represents shares that need to be burned or redistributed
-
-  log.info("BurnOrRedistributableSharesIncreased processed successfully", []);
+  log.info("BurnOrRedistributableSharesIncreased event saved: {}", [
+    burnableEvent.id,
+  ]);
 }
 
 export function handleBurnOrRedistributableSharesDecreased(
   event: BurnOrRedistributableSharesDecreased
 ): void {
-  // FIXED: Safer operatorSet.id access
-  let operatorSetId = "unknown";
-  if (event.params.operatorSet) {
-    operatorSetId = event.params.operatorSet.id.toString();
-  }
+  log.info("Processing BurnOrRedistributableSharesDecreased event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
 
-  log.info(
-    "Processing BurnOrRedistributableSharesDecreased: operatorSet {} shares {} strategy {}",
-    [
-      operatorSetId,
-      event.params.shares.toString(),
-      event.params.strategy.toHexString(),
-    ]
+  // Create minimal lookup entities if needed
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id
+  );
+  let strategy = getOrCreateStrategy(event.params.strategy);
+
+  // Create pure event entity
+  let burnableEvent = new BurnOrRedistributableSharesDecreasedEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
 
-  // Get or create strategy
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
-  );
-  strategy.lastActivityAt = event.block.timestamp;
+  // Base event fields
+  burnableEvent.transactionHash = event.transaction.hash;
+  burnableEvent.logIndex = event.logIndex;
+  burnableEvent.blockNumber = event.block.number;
+  burnableEvent.blockTimestamp = event.block.timestamp;
+  burnableEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  burnableEvent.operatorSet = operatorSet.id;
+  burnableEvent.slashId = event.params.slashId;
+  burnableEvent.strategy = strategy.id;
+  burnableEvent.shares = event.params.shares;
+
+  // Save entities
+  operatorSet.save();
   strategy.save();
+  burnableEvent.save();
 
-  // This event indicates resolution of post-slashing share management
-  // The decrease suggests shares have been processed (burned or redistributed)
-
-  log.info("BurnOrRedistributableSharesDecreased processed successfully", []);
+  log.info("BurnOrRedistributableSharesDecreased event saved: {}", [
+    burnableEvent.id,
+  ]);
 }
 
 export function handleBurnableSharesDecreased(
   event: BurnableSharesDecreased
 ): void {
-  log.info("Processing BurnableSharesDecreased: strategy {} shares {}", [
-    event.params.strategy.toHexString(),
-    event.params.shares.toString(),
+  log.info("Processing BurnableSharesDecreased event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Get or create strategy
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
+  // Create minimal lookup entity if needed
+  let strategy = getOrCreateStrategy(event.params.strategy);
+
+  // Create pure event entity
+  let burnableEvent = new BurnableSharesDecreasedEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
-  strategy.lastActivityAt = event.block.timestamp;
+
+  // Base event fields
+  burnableEvent.transactionHash = event.transaction.hash;
+  burnableEvent.logIndex = event.logIndex;
+  burnableEvent.blockNumber = event.block.number;
+  burnableEvent.blockTimestamp = event.block.timestamp;
+  burnableEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  burnableEvent.strategy = strategy.id;
+  burnableEvent.shares = event.params.shares;
+
+  // Save entities
   strategy.save();
+  burnableEvent.save();
 
-  // This event indicates shares have been actually burned
-  // Final step in the slashing resolution process
-
-  log.info("BurnableSharesDecreased processed successfully", []);
+  log.info("BurnableSharesDecreased event saved: {}", [burnableEvent.id]);
 }
 
 // ========================================
-// HELPER FUNCTIONS
+// MINIMAL HELPER FUNCTIONS
 // ========================================
 
-function getOrCreateStaker(address: Address, timestamp: BigInt): Staker {
+function getOrCreateStaker(address: Address): Staker {
   let staker = Staker.load(address.toHexString());
   if (staker == null) {
     staker = new Staker(address.toHexString());
     staker.address = address;
-
-    // FIXED: Proper nullable field initialization for AssemblyScript
-    staker.delegatedOperator = null;
-    staker.delegatedAt = null;
-
-    // Initialize counters
-    staker.totalStrategies = BigInt.fromI32(0);
-    staker.delegationChangeCount = BigInt.fromI32(0);
-    staker.withdrawalCount = BigInt.fromI32(0);
-
-    // Set timestamps
-    staker.firstActivityAt = timestamp;
-    staker.lastActivityAt = timestamp;
   }
   return staker;
 }
 
-function getOrCreateStrategy(address: Address, timestamp: BigInt): Strategy {
+function getOrCreateStrategy(address: Address): Strategy {
   let strategy = Strategy.load(address.toHexString());
   if (strategy == null) {
     strategy = new Strategy(address.toHexString());
     strategy.address = address;
-
-    // Initialize counters
-    strategy.totalDeposits = BigInt.fromI32(0);
-    strategy.totalShares = BigInt.fromI32(0);
-    strategy.operatorCount = BigInt.fromI32(0);
-
-    // Initialize status
-    strategy.isWhitelisted = true; // Assume whitelisted until proven otherwise
-    strategy.whitelistedAt = null;
-
-    // FIXED: Proper nullable field initialization
-    strategy.firstDepositAt = null;
-    strategy.lastActivityAt = timestamp;
   }
   return strategy;
+}
+
+function getOrCreateAVS(address: Address): AVS {
+  let avs = AVS.load(address.toHexString());
+  if (avs == null) {
+    avs = new AVS(address.toHexString());
+    avs.address = address;
+  }
+  return avs;
+}
+
+function getOrCreateOperatorSet(
+  avsAddress: Address,
+  operatorSetId: BigInt
+): OperatorSet {
+  let id = avsAddress.toHexString() + "-" + operatorSetId.toString();
+  let operatorSet = OperatorSet.load(id);
+  if (operatorSet == null) {
+    operatorSet = new OperatorSet(id);
+    operatorSet.avs = avsAddress.toHexString();
+    operatorSet.operatorSetId = operatorSetId;
+
+    // Ensure AVS exists
+    let avs = getOrCreateAVS(avsAddress);
+    avs.save();
+  }
+  return operatorSet;
 }

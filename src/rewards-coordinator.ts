@@ -12,59 +12,70 @@ import {
   RewardsClaimed,
   ActivationDelaySet,
   DefaultOperatorSplitBipsSet,
+  RewardsUpdaterSet,
+  RewardsForAllSubmitterSet,
+  ClaimerForSet,
 } from "../generated/RewardsCoordinator/RewardsCoordinator";
 
 import {
+  // Minimal lookup entities
   Operator,
   AVS,
   OperatorSet,
+  // Event entities only
   RewardsSubmission,
-  OperatorCommissionEvent,
-  DistributionRootEvent,
+  OperatorDirectedAVSRewardsSubmission,
+  OperatorDirectedOperatorSetRewardsSubmission,
+  RewardsUpdaterSet as RewardsUpdaterSetEntity,
+  RewardsForAllSubmitterSet as RewardsForAllSubmitterSetEntity,
+  ActivationDelaySet as ActivationDelaySetEntity,
+  DefaultOperatorSplitBipsSet as DefaultOperatorSplitBipsSetEntity,
+  OperatorAVSSplitBipsSet as OperatorAVSSplitBipsSetEntity,
+  OperatorPISplitBipsSet as OperatorPISplitBipsSetEntity,
+  OperatorSetSplitBipsSet as OperatorSetSplitBipsSetEntity,
+  ClaimerForSet as ClaimerForSetEntity,
+  DistributionRootSubmitted as DistributionRootSubmittedEntity,
+  DistributionRootDisabled as DistributionRootDisabledEntity,
   RewardsClaimed as RewardsClaimedEntity,
 } from "../generated/schema";
 
-import { BigInt, log, Address } from "@graphprotocol/graph-ts";
+import { log, Address, BigInt } from "@graphprotocol/graph-ts";
 
 // ========================================
-// REWARDS SUBMISSION EVENTS (TRACK AVS ECONOMIC ACTIVITY)6
+// REWARDS SUBMISSION EVENTS
 // ========================================
 
 export function handleAVSRewardsSubmissionCreated(
   event: AVSRewardsSubmissionCreated
 ): void {
-  log.info("Processing AVSRewardsSubmissionCreated: AVS {} nonce {}", [
-    event.params.avs.toHexString(),
-    event.params.submissionNonce.toString(),
+  log.info("Processing AVSRewardsSubmissionCreated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Get or create AVS
-  let avs = getOrCreateAVS(event.params.avs, event.block.timestamp);
-  avs.rewardsSubmissionCount = avs.rewardsSubmissionCount.plus(
-    BigInt.fromI32(1)
-  );
-  avs.lastActivityAt = event.block.timestamp;
-  avs.updatedAt = event.block.timestamp;
+  // Create minimal lookup entity if needed
+  let avs = getOrCreateAVS(event.params.avs);
 
-  // Create rewards submission entity
+  // Create pure event entity
   let submission = new RewardsSubmission(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   submission.transactionHash = event.transaction.hash;
   submission.logIndex = event.logIndex;
   submission.blockNumber = event.block.number;
   submission.blockTimestamp = event.block.timestamp;
   submission.contractAddress = event.address;
+
+  // Event-specific fields
   submission.avs = avs.id;
-  submission.submitter = event.params.avs; // AVS is the submitter
+  submission.submitter = event.params.avs;
   submission.submissionNonce = event.params.submissionNonce;
   submission.rewardsSubmissionHash = event.params.rewardsSubmissionHash;
   submission.submissionType = "AVS_REWARDS";
 
-  // Extract submission details from the struct
+  // Extract and encode submission details as JSON
   let rewardsSubmission = event.params.rewardsSubmission;
-
-  // Inline strategiesAndMultipliers encoding
   let strategiesResult: string[] = [];
   for (let i = 0; i < rewardsSubmission.strategiesAndMultipliers.length; i++) {
     let item = rewardsSubmission.strategiesAndMultipliers[i];
@@ -73,7 +84,6 @@ export function handleAVSRewardsSubmissionCreated(
     );
   }
   submission.strategiesAndMultipliers = `[${strategiesResult.join(",")}]`;
-
   submission.token = rewardsSubmission.token;
   submission.amount = rewardsSubmission.amount;
   submission.startTimestamp = rewardsSubmission.startTimestamp;
@@ -83,27 +93,30 @@ export function handleAVSRewardsSubmissionCreated(
   avs.save();
   submission.save();
 
-  log.info("AVSRewardsSubmissionCreated processed successfully", []);
+  log.info("AVSRewardsSubmissionCreated event saved: {}", [submission.id]);
 }
 
 export function handleRewardsSubmissionForAllCreated(
   event: RewardsSubmissionForAllCreated
 ): void {
-  log.info("Processing RewardsSubmissionForAllCreated: submitter {} nonce {}", [
-    event.params.submitter.toHexString(),
-    event.params.submissionNonce.toString(),
+  log.info("Processing RewardsSubmissionForAllCreated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Create rewards submission entity
+  // Create pure event entity
   let submission = new RewardsSubmission(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   submission.transactionHash = event.transaction.hash;
   submission.logIndex = event.logIndex;
   submission.blockNumber = event.block.number;
   submission.blockTimestamp = event.block.timestamp;
   submission.contractAddress = event.address;
-  submission.avs = null; // No specific AVS for "for all" submissions
+
+  // Event-specific fields
+  submission.avs = null; // No specific AVS
   submission.submitter = event.params.submitter;
   submission.submissionNonce = event.params.submissionNonce;
   submission.rewardsSubmissionHash = event.params.rewardsSubmissionHash;
@@ -111,8 +124,6 @@ export function handleRewardsSubmissionForAllCreated(
 
   // Extract submission details
   let rewardsSubmission = event.params.rewardsSubmission;
-
-  // Inline strategiesAndMultipliers encoding
   let strategiesResult: string[] = [];
   for (let i = 0; i < rewardsSubmission.strategiesAndMultipliers.length; i++) {
     let item = rewardsSubmission.strategiesAndMultipliers[i];
@@ -121,7 +132,6 @@ export function handleRewardsSubmissionForAllCreated(
     );
   }
   submission.strategiesAndMultipliers = `[${strategiesResult.join(",")}]`;
-
   submission.token = rewardsSubmission.token;
   submission.amount = rewardsSubmission.amount;
   submission.startTimestamp = rewardsSubmission.startTimestamp;
@@ -129,30 +139,30 @@ export function handleRewardsSubmissionForAllCreated(
 
   submission.save();
 
-  log.info("RewardsSubmissionForAllCreated processed successfully", []);
+  log.info("RewardsSubmissionForAllCreated event saved: {}", [submission.id]);
 }
 
 export function handleRewardsSubmissionForAllEarnersCreated(
   event: RewardsSubmissionForAllEarnersCreated
 ): void {
-  log.info(
-    "Processing RewardsSubmissionForAllEarnersCreated: tokenHopper {} nonce {}",
-    [
-      event.params.tokenHopper.toHexString(),
-      event.params.submissionNonce.toString(),
-    ]
-  );
+  log.info("Processing RewardsSubmissionForAllEarnersCreated event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
 
-  // Create rewards submission entity
+  // Create pure event entity
   let submission = new RewardsSubmission(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   submission.transactionHash = event.transaction.hash;
   submission.logIndex = event.logIndex;
   submission.blockNumber = event.block.number;
   submission.blockTimestamp = event.block.timestamp;
   submission.contractAddress = event.address;
-  submission.avs = null; // No specific AVS for "for all earners" submissions
+
+  // Event-specific fields
+  submission.avs = null; // No specific AVS
   submission.submitter = event.params.tokenHopper;
   submission.submissionNonce = event.params.submissionNonce;
   submission.rewardsSubmissionHash = event.params.rewardsSubmissionHash;
@@ -160,8 +170,6 @@ export function handleRewardsSubmissionForAllEarnersCreated(
 
   // Extract submission details
   let rewardsSubmission = event.params.rewardsSubmission;
-
-  // Inline strategiesAndMultipliers encoding
   let strategiesResult: string[] = [];
   for (let i = 0; i < rewardsSubmission.strategiesAndMultipliers.length; i++) {
     let item = rewardsSubmission.strategiesAndMultipliers[i];
@@ -170,7 +178,6 @@ export function handleRewardsSubmissionForAllEarnersCreated(
     );
   }
   submission.strategiesAndMultipliers = `[${strategiesResult.join(",")}]`;
-
   submission.token = rewardsSubmission.token;
   submission.amount = rewardsSubmission.amount;
   submission.startTimestamp = rewardsSubmission.startTimestamp;
@@ -178,45 +185,44 @@ export function handleRewardsSubmissionForAllEarnersCreated(
 
   submission.save();
 
-  log.info("RewardsSubmissionForAllEarnersCreated processed successfully", []);
+  log.info("RewardsSubmissionForAllEarnersCreated event saved: {}", [
+    submission.id,
+  ]);
 }
 
 export function handleOperatorDirectedAVSRewardsSubmissionCreated(
   event: OperatorDirectedAVSRewardsSubmissionCreated
 ): void {
-  log.info(
-    "Processing OperatorDirectedAVSRewardsSubmissionCreated: caller {} AVS {}",
-    [event.params.caller.toHexString(), event.params.avs.toHexString()]
-  );
+  log.info("Processing OperatorDirectedAVSRewardsSubmissionCreated event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
 
-  // Get or create AVS
-  let avs = getOrCreateAVS(event.params.avs, event.block.timestamp);
-  avs.rewardsSubmissionCount = avs.rewardsSubmissionCount.plus(
-    BigInt.fromI32(1)
-  );
-  avs.lastActivityAt = event.block.timestamp;
-  avs.updatedAt = event.block.timestamp;
+  // Create minimal lookup entity if needed
+  let avs = getOrCreateAVS(event.params.avs);
 
-  // Create rewards submission entity
-  let submission = new RewardsSubmission(
+  // Create pure event entity
+  let submission = new OperatorDirectedAVSRewardsSubmission(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   submission.transactionHash = event.transaction.hash;
   submission.logIndex = event.logIndex;
   submission.blockNumber = event.block.number;
   submission.blockTimestamp = event.block.timestamp;
   submission.contractAddress = event.address;
-  submission.avs = avs.id;
-  submission.submitter = event.params.caller;
-  submission.submissionNonce = event.params.submissionNonce;
-  submission.rewardsSubmissionHash =
-    event.params.operatorDirectedRewardsSubmissionHash;
-  submission.submissionType = "OPERATOR_DIRECTED_AVS";
 
-  // Extract submission details from the operator-directed struct
+  // Event-specific fields
+  submission.caller = event.params.caller;
+  submission.avs = avs.id;
+  submission.operatorDirectedRewardsSubmissionHash =
+    event.params.operatorDirectedRewardsSubmissionHash;
+  submission.submissionNonce = event.params.submissionNonce;
+
+  // Extract submission details
   let rewardsSubmission = event.params.operatorDirectedRewardsSubmission;
 
-  // Inline strategiesAndMultipliers encoding
+  // Encode strategies and multipliers
   let strategiesResult: string[] = [];
   for (let i = 0; i < rewardsSubmission.strategiesAndMultipliers.length; i++) {
     let item = rewardsSubmission.strategiesAndMultipliers[i];
@@ -229,79 +235,64 @@ export function handleOperatorDirectedAVSRewardsSubmissionCreated(
   submission.token = rewardsSubmission.token;
   submission.startTimestamp = rewardsSubmission.startTimestamp;
   submission.duration = rewardsSubmission.duration;
+  submission.description = rewardsSubmission.description;
 
-  // Inline operatorRewards encoding and total calculation
+  // Encode operator rewards
   let rewardsResult: string[] = [];
-  let totalAmount = BigInt.fromI32(0);
   for (let i = 0; i < rewardsSubmission.operatorRewards.length; i++) {
     let reward = rewardsSubmission.operatorRewards[i];
     rewardsResult.push(
       `{"operator":"${reward.operator.toHexString()}","amount":"${reward.amount.toString()}"}`
     );
-    totalAmount = totalAmount.plus(reward.amount);
   }
   submission.operatorRewards = `[${rewardsResult.join(",")}]`;
-  submission.amount = totalAmount;
-  submission.description = rewardsSubmission.description;
 
   // Save entities
   avs.save();
   submission.save();
 
-  log.info(
-    "OperatorDirectedAVSRewardsSubmissionCreated processed successfully",
-    []
-  );
+  log.info("OperatorDirectedAVSRewardsSubmissionCreated event saved: {}", [
+    submission.id,
+  ]);
 }
 
-// Replace the existing function with this corrected version:
 export function handleOperatorDirectedOperatorSetRewardsSubmissionCreated(
   event: OperatorDirectedOperatorSetRewardsSubmissionCreated
 ): void {
   log.info(
-    "Processing OperatorDirectedOperatorSetRewardsSubmissionCreated: caller {} operatorSet {}",
-    [event.params.caller.toHexString(), event.params.operatorSet.id.toString()]
+    "Processing OperatorDirectedOperatorSetRewardsSubmissionCreated event: {}",
+    [event.transaction.hash.toHexString()]
   );
 
-  // Load entities
-  let operatorSetId =
-    event.params.operatorSet.avs.toHexString() +
-    "-" +
-    event.params.operatorSet.id.toString();
-  let operatorSet = OperatorSet.load(operatorSetId);
-  let avs = getOrCreateAVS(event.params.operatorSet.avs, event.block.timestamp);
-
-  if (operatorSet != null) {
-    operatorSet.lastActivityAt = event.block.timestamp;
-    operatorSet.save();
-  }
-
-  avs.rewardsSubmissionCount = avs.rewardsSubmissionCount.plus(
-    BigInt.fromI32(1)
+  // Create minimal lookup entities if needed
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id
   );
-  avs.lastActivityAt = event.block.timestamp;
-  avs.updatedAt = event.block.timestamp;
 
-  // Create rewards submission entity
-  let submission = new RewardsSubmission(
+  // Create pure event entity
+  let submission = new OperatorDirectedOperatorSetRewardsSubmission(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   submission.transactionHash = event.transaction.hash;
   submission.logIndex = event.logIndex;
   submission.blockNumber = event.block.number;
   submission.blockTimestamp = event.block.timestamp;
   submission.contractAddress = event.address;
-  submission.avs = avs.id;
-  submission.submitter = event.params.caller;
-  submission.submissionNonce = event.params.submissionNonce;
-  submission.rewardsSubmissionHash =
+
+  // Event-specific fields
+  submission.caller = event.params.caller;
+  submission.operatorDirectedRewardsSubmissionHash =
     event.params.operatorDirectedRewardsSubmissionHash;
-  submission.submissionType = "OPERATOR_DIRECTED_OPERATOR_SET";
+  submission.operatorSet = operatorSet.id;
+  submission.submissionNonce = event.params.submissionNonce;
 
   // Extract submission details
   let rewardsSubmission = event.params.operatorDirectedRewardsSubmission;
 
-  // Inline strategiesAndMultipliers encoding
+  // Encode strategies and multipliers
   let strategiesResult: string[] = [];
   for (let i = 0; i < rewardsSubmission.strategiesAndMultipliers.length; i++) {
     let item = rewardsSubmission.strategiesAndMultipliers[i];
@@ -314,188 +305,159 @@ export function handleOperatorDirectedOperatorSetRewardsSubmissionCreated(
   submission.token = rewardsSubmission.token;
   submission.startTimestamp = rewardsSubmission.startTimestamp;
   submission.duration = rewardsSubmission.duration;
+  submission.description = rewardsSubmission.description;
 
-  // Inline operatorRewards encoding and total calculation
+  // Encode operator rewards
   let rewardsResult: string[] = [];
-  let totalAmount = BigInt.fromI32(0);
   for (let i = 0; i < rewardsSubmission.operatorRewards.length; i++) {
     let reward = rewardsSubmission.operatorRewards[i];
     rewardsResult.push(
       `{"operator":"${reward.operator.toHexString()}","amount":"${reward.amount.toString()}"}`
     );
-    totalAmount = totalAmount.plus(reward.amount);
   }
   submission.operatorRewards = `[${rewardsResult.join(",")}]`;
-  submission.amount = totalAmount;
-  submission.description = rewardsSubmission.description;
-  submission.operatorSetId = operatorSetId; // Store the operator set ID
 
-  avs.save();
+  // Save entities
+  operatorSet.save();
   submission.save();
 
   log.info(
-    "OperatorDirectedOperatorSetRewardsSubmissionCreated processed successfully",
-    []
+    "OperatorDirectedOperatorSetRewardsSubmissionCreated event saved: {}",
+    [submission.id]
   );
 }
 
 // ========================================
-// CRITICAL COMMISSION RATE CHANGES (KEY FOR ECONOMIC BEHAVIOR)
+// COMMISSION RATE EVENTS
 // ========================================
 
 export function handleOperatorAVSSplitBipsSet(
   event: OperatorAVSSplitBipsSet
 ): void {
-  log.info("COMMISSION CHANGE: Operator {} AVS {} split {} -> {}", [
-    event.params.operator.toHexString(),
-    event.params.avs.toHexString(),
-    event.params.oldOperatorAVSSplitBips.toString(),
-    event.params.newOperatorAVSSplitBips.toString(),
+  log.info("Processing OperatorAVSSplitBipsSet event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load entities
-  let operator = Operator.load(event.params.operator.toHexString());
-  let avs = getOrCreateAVS(event.params.avs, event.block.timestamp);
+  // Create minimal lookup entities if needed
+  let operator = getOrCreateOperator(event.params.operator);
+  let avs = getOrCreateAVS(event.params.avs);
 
-  if (operator != null) {
-    operator.lastActivityAt = event.block.timestamp;
-    operator.updatedAt = event.block.timestamp;
-    operator.save();
-  }
-
-  avs.lastActivityAt = event.block.timestamp;
-  avs.updatedAt = event.block.timestamp;
-  avs.save();
-
-  // Create commission event
-  let commissionEvent = new OperatorCommissionEvent(
+  // Create pure event entity
+  let splitEvent = new OperatorAVSSplitBipsSetEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
-  commissionEvent.transactionHash = event.transaction.hash;
-  commissionEvent.logIndex = event.logIndex;
-  commissionEvent.blockNumber = event.block.number;
-  commissionEvent.blockTimestamp = event.block.timestamp;
-  commissionEvent.contractAddress = event.address;
-  commissionEvent.operator =
-    operator != null ? operator.id : event.params.operator.toHexString();
-  commissionEvent.caller = event.params.caller;
-  commissionEvent.commissionType = "AVS_SPECIFIC";
-  commissionEvent.activatedAt = event.params.activatedAt;
-  commissionEvent.oldCommissionBips = new BigInt(
+
+  // Base event fields
+  splitEvent.transactionHash = event.transaction.hash;
+  splitEvent.logIndex = event.logIndex;
+  splitEvent.blockNumber = event.block.number;
+  splitEvent.blockTimestamp = event.block.timestamp;
+  splitEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  splitEvent.caller = event.params.caller;
+  splitEvent.operator = operator.id;
+  splitEvent.avs = avs.id;
+  splitEvent.activatedAt = event.params.activatedAt;
+  splitEvent.oldOperatorAVSSplitBips = BigInt.fromI32(
     event.params.oldOperatorAVSSplitBips
   );
-  commissionEvent.newCommissionBips = new BigInt(
+  splitEvent.newOperatorAVSSplitBips = BigInt.fromI32(
     event.params.newOperatorAVSSplitBips
   );
-  commissionEvent.targetAVS = avs.id;
-  commissionEvent.targetOperatorSet = null;
 
-  commissionEvent.save();
+  // Save entities
+  operator.save();
+  avs.save();
+  splitEvent.save();
 
-  log.info("OperatorAVSSplitBipsSet processed successfully", []);
+  log.info("OperatorAVSSplitBipsSet event saved: {}", [splitEvent.id]);
 }
 
 export function handleOperatorPISplitBipsSet(
   event: OperatorPISplitBipsSet
 ): void {
-  log.info("COMMISSION CHANGE: Operator {} PI split {} -> {}", [
-    event.params.operator.toHexString(),
-    event.params.oldOperatorPISplitBips.toString(),
-    event.params.newOperatorPISplitBips.toString(),
+  log.info("Processing OperatorPISplitBipsSet event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load operator
-  let operator = Operator.load(event.params.operator.toHexString());
-  if (operator != null) {
-    operator.lastActivityAt = event.block.timestamp;
-    operator.updatedAt = event.block.timestamp;
-    operator.save();
-  }
+  // Create minimal lookup entity if needed
+  let operator = getOrCreateOperator(event.params.operator);
 
-  // Create commission event
-  let commissionEvent = new OperatorCommissionEvent(
+  // Create pure event entity
+  let splitEvent = new OperatorPISplitBipsSetEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
-  commissionEvent.transactionHash = event.transaction.hash;
-  commissionEvent.logIndex = event.logIndex;
-  commissionEvent.blockNumber = event.block.number;
-  commissionEvent.blockTimestamp = event.block.timestamp;
-  commissionEvent.contractAddress = event.address;
-  commissionEvent.operator =
-    operator != null ? operator.id : event.params.operator.toHexString();
-  commissionEvent.caller = event.params.caller;
-  commissionEvent.commissionType = "PI_SPECIFIC";
-  commissionEvent.activatedAt = event.params.activatedAt;
-  commissionEvent.oldCommissionBips = new BigInt(
+
+  // Base event fields
+  splitEvent.transactionHash = event.transaction.hash;
+  splitEvent.logIndex = event.logIndex;
+  splitEvent.blockNumber = event.block.number;
+  splitEvent.blockTimestamp = event.block.timestamp;
+  splitEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  splitEvent.caller = event.params.caller;
+  splitEvent.operator = operator.id;
+  splitEvent.activatedAt = event.params.activatedAt;
+  splitEvent.oldOperatorPISplitBips = BigInt.fromI32(
     event.params.oldOperatorPISplitBips
   );
-  commissionEvent.newCommissionBips = new BigInt(
+  splitEvent.newOperatorPISplitBips = BigInt.fromI32(
     event.params.newOperatorPISplitBips
   );
-  commissionEvent.targetAVS = null;
-  commissionEvent.targetOperatorSet = null;
 
-  commissionEvent.save();
+  // Save entities
+  operator.save();
+  splitEvent.save();
 
-  log.info("OperatorPISplitBipsSet processed successfully", []);
+  log.info("OperatorPISplitBipsSet event saved: {}", [splitEvent.id]);
 }
 
 export function handleOperatorSetSplitBipsSet(
   event: OperatorSetSplitBipsSet
 ): void {
-  log.info("COMMISSION CHANGE: Operator {} OperatorSet {} split {} -> {}", [
-    event.params.operator.toHexString(),
-    event.params.operatorSet.id.toString(),
-    event.params.oldOperatorSetSplitBips.toString(),
-    event.params.newOperatorSetSplitBips.toString(),
+  log.info("Processing OperatorSetSplitBipsSet event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load entities
-  let operator = Operator.load(event.params.operator.toHexString());
-  let operatorSetId =
-    event.params.operatorSet.avs.toHexString() +
-    "-" +
-    event.params.operatorSet.id.toString();
-  let operatorSet = OperatorSet.load(operatorSetId);
+  // Create minimal lookup entities if needed
+  let operator = getOrCreateOperator(event.params.operator);
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id
+  );
 
-  if (operator != null) {
-    operator.lastActivityAt = event.block.timestamp;
-    operator.updatedAt = event.block.timestamp;
-    operator.save();
-  }
-
-  if (operatorSet != null) {
-    operatorSet.lastActivityAt = event.block.timestamp;
-    operatorSet.save();
-  }
-
-  // Create commission event
-  let commissionEvent = new OperatorCommissionEvent(
+  // Create pure event entity
+  let splitEvent = new OperatorSetSplitBipsSetEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
-  commissionEvent.transactionHash = event.transaction.hash;
-  commissionEvent.logIndex = event.logIndex;
-  commissionEvent.blockNumber = event.block.number;
-  commissionEvent.blockTimestamp = event.block.timestamp;
-  commissionEvent.contractAddress = event.address;
-  commissionEvent.operator =
-    operator != null ? operator.id : event.params.operator.toHexString();
-  commissionEvent.caller = event.params.caller;
-  commissionEvent.commissionType = "OPERATOR_SET_SPECIFIC";
-  commissionEvent.activatedAt = event.params.activatedAt;
-  commissionEvent.oldCommissionBips = new BigInt(
+
+  // Base event fields
+  splitEvent.transactionHash = event.transaction.hash;
+  splitEvent.logIndex = event.logIndex;
+  splitEvent.blockNumber = event.block.number;
+  splitEvent.blockTimestamp = event.block.timestamp;
+  splitEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  splitEvent.caller = event.params.caller;
+  splitEvent.operator = operator.id;
+  splitEvent.operatorSet = operatorSet.id;
+  splitEvent.activatedAt = event.params.activatedAt;
+  splitEvent.oldOperatorSetSplitBips = BigInt.fromI32(
     event.params.oldOperatorSetSplitBips
   );
-  commissionEvent.newCommissionBips = new BigInt(
+  splitEvent.newOperatorSetSplitBips = BigInt.fromI32(
     event.params.newOperatorSetSplitBips
   );
-  commissionEvent.targetAVS = operatorSet != null ? operatorSet.avs : null;
-  commissionEvent.targetOperatorSet =
-    operatorSet != null ? operatorSet.id : null;
 
-  commissionEvent.save();
+  // Save entities
+  operator.save();
+  operatorSet.save();
+  splitEvent.save();
 
-  log.info("OperatorSetSplitBipsSet processed successfully", []);
+  log.info("OperatorSetSplitBipsSet event saved: {}", [splitEvent.id]);
 }
 
 // ========================================
@@ -505,74 +467,79 @@ export function handleOperatorSetSplitBipsSet(
 export function handleDistributionRootSubmitted(
   event: DistributionRootSubmitted
 ): void {
-  log.info("Processing DistributionRootSubmitted: root index {} root {}", [
-    event.params.rootIndex.toString(),
-    event.params.root.toHexString(),
+  log.info("Processing DistributionRootSubmitted event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Create distribution root event
-  let distributionEvent = new DistributionRootEvent(
+  // Create pure event entity
+  let distributionEvent = new DistributionRootSubmittedEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   distributionEvent.transactionHash = event.transaction.hash;
   distributionEvent.logIndex = event.logIndex;
   distributionEvent.blockNumber = event.block.number;
   distributionEvent.blockTimestamp = event.block.timestamp;
   distributionEvent.contractAddress = event.address;
+
+  // Event-specific fields
   distributionEvent.rootIndex = event.params.rootIndex;
   distributionEvent.root = event.params.root;
   distributionEvent.rewardsCalculationEndTimestamp =
     event.params.rewardsCalculationEndTimestamp;
   distributionEvent.activatedAt = event.params.activatedAt;
-  distributionEvent.eventType = "SUBMITTED";
 
   distributionEvent.save();
 
-  log.info("DistributionRootSubmitted processed successfully", []);
+  log.info("DistributionRootSubmitted event saved: {}", [distributionEvent.id]);
 }
 
 export function handleDistributionRootDisabled(
   event: DistributionRootDisabled
 ): void {
-  log.info("Processing DistributionRootDisabled: root index {}", [
-    event.params.rootIndex.toString(),
+  log.info("Processing DistributionRootDisabled event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Create distribution root event
-  let distributionEvent = new DistributionRootEvent(
+  // Create pure event entity
+  let distributionEvent = new DistributionRootDisabledEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   distributionEvent.transactionHash = event.transaction.hash;
   distributionEvent.logIndex = event.logIndex;
   distributionEvent.blockNumber = event.block.number;
   distributionEvent.blockTimestamp = event.block.timestamp;
   distributionEvent.contractAddress = event.address;
+
+  // Event-specific fields
   distributionEvent.rootIndex = event.params.rootIndex;
-  distributionEvent.root = null;
-  distributionEvent.rewardsCalculationEndTimestamp = null;
-  distributionEvent.activatedAt = null;
-  distributionEvent.eventType = "DISABLED";
 
   distributionEvent.save();
 
-  log.info("DistributionRootDisabled processed successfully", []);
+  log.info("DistributionRootDisabled event saved: {}", [distributionEvent.id]);
 }
 
 export function handleRewardsClaimed(event: RewardsClaimed): void {
-  log.info("Processing RewardsClaimed: earner {} amount {}", [
-    event.params.earner.toHexString(),
-    event.params.claimedAmount.toString(),
+  log.info("Processing RewardsClaimed event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Create rewards claimed event
+  // Create pure event entity
   let claimedEvent = new RewardsClaimedEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   claimedEvent.transactionHash = event.transaction.hash;
   claimedEvent.logIndex = event.logIndex;
   claimedEvent.blockNumber = event.block.number;
   claimedEvent.blockTimestamp = event.block.timestamp;
   claimedEvent.contractAddress = event.address;
+
+  // Event-specific fields
   claimedEvent.root = event.params.root;
   claimedEvent.earner = event.params.earner;
   claimedEvent.claimer = event.params.claimer;
@@ -582,62 +549,189 @@ export function handleRewardsClaimed(event: RewardsClaimed): void {
 
   claimedEvent.save();
 
-  log.info("RewardsClaimed processed successfully", []);
+  log.info("RewardsClaimed event saved: {}", [claimedEvent.id]);
 }
 
 // ========================================
 // SYSTEM CONFIGURATION EVENTS
 // ========================================
 
-// TODO: Access Use
-export function handleActivationDelaySet(event: ActivationDelaySet): void {
-  log.info("Processing ActivationDelaySet: old {} new {}", [
-    event.params.oldActivationDelay.toString(),
-    event.params.newActivationDelay.toString(),
+export function handleRewardsUpdaterSet(event: RewardsUpdaterSet): void {
+  log.info("Processing RewardsUpdaterSet event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // This is a system-wide configuration change
-  // We'll track it but it doesn't directly impact individual risk assessments
+  // Create pure event entity
+  let updaterEvent = new RewardsUpdaterSetEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  );
 
-  log.info("ActivationDelaySet processed successfully", []);
+  // Base event fields
+  updaterEvent.transactionHash = event.transaction.hash;
+  updaterEvent.logIndex = event.logIndex;
+  updaterEvent.blockNumber = event.block.number;
+  updaterEvent.blockTimestamp = event.block.timestamp;
+  updaterEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  updaterEvent.oldRewardsUpdater = event.params.oldRewardsUpdater;
+  updaterEvent.newRewardsUpdater = event.params.newRewardsUpdater;
+
+  updaterEvent.save();
+
+  log.info("RewardsUpdaterSet event saved: {}", [updaterEvent.id]);
 }
 
-// TODO: Acess use
+export function handleRewardsForAllSubmitterSet(
+  event: RewardsForAllSubmitterSet
+): void {
+  log.info("Processing RewardsForAllSubmitterSet event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
+
+  // Create pure event entity
+  let submitterEvent = new RewardsForAllSubmitterSetEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  );
+
+  // Base event fields
+  submitterEvent.transactionHash = event.transaction.hash;
+  submitterEvent.logIndex = event.logIndex;
+  submitterEvent.blockNumber = event.block.number;
+  submitterEvent.blockTimestamp = event.block.timestamp;
+  submitterEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  submitterEvent.rewardsForAllSubmitter = event.params.rewardsForAllSubmitter;
+  submitterEvent.oldValue = event.params.oldValue;
+  submitterEvent.newValue = event.params.newValue;
+
+  submitterEvent.save();
+
+  log.info("RewardsForAllSubmitterSet event saved: {}", [submitterEvent.id]);
+}
+
+export function handleActivationDelaySet(event: ActivationDelaySet): void {
+  log.info("Processing ActivationDelaySet event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
+
+  // Create pure event entity
+  let delayEvent = new ActivationDelaySetEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  );
+
+  // Base event fields
+  delayEvent.transactionHash = event.transaction.hash;
+  delayEvent.logIndex = event.logIndex;
+  delayEvent.blockNumber = event.block.number;
+  delayEvent.blockTimestamp = event.block.timestamp;
+  delayEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  delayEvent.oldActivationDelay = event.params.oldActivationDelay;
+  delayEvent.newActivationDelay = event.params.newActivationDelay;
+
+  delayEvent.save();
+
+  log.info("ActivationDelaySet event saved: {}", [delayEvent.id]);
+}
+
 export function handleDefaultOperatorSplitBipsSet(
   event: DefaultOperatorSplitBipsSet
 ): void {
-  log.info("Processing DefaultOperatorSplitBipsSet: old {} new {}", [
-    event.params.oldDefaultOperatorSplitBips.toString(),
-    event.params.newDefaultOperatorSplitBips.toString(),
+  log.info("Processing DefaultOperatorSplitBipsSet event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // This is a system-wide default configuration
-  // We'll track it but it doesn't directly impact individual risk assessments
+  // Create pure event entity
+  let splitEvent = new DefaultOperatorSplitBipsSetEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  );
 
-  log.info("DefaultOperatorSplitBipsSet processed successfully", []);
+  // Base event fields
+  splitEvent.transactionHash = event.transaction.hash;
+  splitEvent.logIndex = event.logIndex;
+  splitEvent.blockNumber = event.block.number;
+  splitEvent.blockTimestamp = event.block.timestamp;
+  splitEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  splitEvent.oldDefaultOperatorSplitBips = BigInt.fromI32(
+    event.params.oldDefaultOperatorSplitBips
+  );
+  splitEvent.newDefaultOperatorSplitBips = BigInt.fromI32(
+    event.params.newDefaultOperatorSplitBips
+  );
+
+  splitEvent.save();
+
+  log.info("DefaultOperatorSplitBipsSet event saved: {}", [splitEvent.id]);
+}
+
+export function handleClaimerForSet(event: ClaimerForSet): void {
+  log.info("Processing ClaimerForSet event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
+
+  // Create pure event entity
+  let claimerEvent = new ClaimerForSetEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  );
+
+  // Base event fields
+  claimerEvent.transactionHash = event.transaction.hash;
+  claimerEvent.logIndex = event.logIndex;
+  claimerEvent.blockNumber = event.block.number;
+  claimerEvent.blockTimestamp = event.block.timestamp;
+  claimerEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  claimerEvent.earner = event.params.earner;
+  claimerEvent.oldClaimer = event.params.oldClaimer;
+  claimerEvent.claimer = event.params.claimer;
+
+  claimerEvent.save();
+
+  log.info("ClaimerForSet event saved: {}", [claimerEvent.id]);
 }
 
 // ========================================
-// HELPER FUNCTIONS
+// MINIMAL HELPER FUNCTIONS
 // ========================================
 
-function getOrCreateAVS(address: Address, timestamp: BigInt): AVS {
+function getOrCreateOperator(address: Address): Operator {
+  let operator = Operator.load(address.toHexString());
+  if (operator == null) {
+    operator = new Operator(address.toHexString());
+    operator.address = address;
+  }
+  return operator;
+}
+
+function getOrCreateAVS(address: Address): AVS {
   let avs = AVS.load(address.toHexString());
   if (avs == null) {
     avs = new AVS(address.toHexString());
     avs.address = address;
-    avs.metadataURI = null;
-
-    // Initialize counters
-    avs.operatorSetCount = BigInt.fromI32(0);
-    avs.totalOperatorRegistrations = BigInt.fromI32(0);
-    avs.rewardsSubmissionCount = BigInt.fromI32(0);
-    avs.slashingEventCount = BigInt.fromI32(0);
-
-    // Set timestamps
-    avs.createdAt = timestamp;
-    avs.lastActivityAt = timestamp;
-    avs.updatedAt = timestamp;
   }
   return avs;
+}
+
+function getOrCreateOperatorSet(
+  avsAddress: Address,
+  operatorSetId: BigInt
+): OperatorSet {
+  let id = avsAddress.toHexString() + "-" + operatorSetId.toString();
+  let operatorSet = OperatorSet.load(id);
+  if (operatorSet == null) {
+    operatorSet = new OperatorSet(id);
+    operatorSet.avs = avsAddress.toHexString();
+    operatorSet.operatorSetId = operatorSetId;
+
+    // Ensure AVS exists
+    let avs = getOrCreateAVS(avsAddress);
+    avs.save();
+  }
+  return operatorSet;
 }

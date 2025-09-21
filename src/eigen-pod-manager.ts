@@ -6,71 +6,63 @@ import {
   BeaconChainETHWithdrawalCompleted,
   BeaconChainSlashingFactorDecreased,
   BurnableETHSharesIncreased,
+  PectraForkTimestampSet,
+  ProofTimestampSetterSet,
 } from "../generated/EigenPodManager/EigenPodManager";
 
 import {
+  // Minimal lookup entities
   Staker,
   EigenPod,
+  // Event entities only
   PodDeployed,
   BeaconChainDeposit,
   PodSharesUpdate,
   BeaconChainWithdrawal,
+  BeaconChainETHWithdrawalCompleted as BeaconChainETHWithdrawalCompletedEntity,
   BeaconChainSlashingEvent,
+  BurnableETHSharesIncreased as BurnableETHSharesIncreasedEntity,
+  PectraForkTimestampSet as PectraForkTimestampSetEntity,
+  ProofTimestampSetterSet as ProofTimestampSetterSetEntity,
 } from "../generated/schema";
 
-import { BigInt, log, Address } from "@graphprotocol/graph-ts";
+import { log, Address, BigInt } from "@graphprotocol/graph-ts";
 
 // ========================================
 // POD LIFECYCLE EVENTS
 // ========================================
 
 export function handlePodDeployed(event: PodDeployedEvent): void {
-  log.info("Processing PodDeployed: pod {} owner {}", [
-    event.params.eigenPod.toHexString(),
-    event.params.podOwner.toHexString(),
+  log.info("Processing PodDeployed event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Get or create staker (pod owner)
-  let staker = getOrCreateStaker(event.params.podOwner, event.block.timestamp);
+  // Create minimal lookup entities if needed
+  let staker = getOrCreateStaker(event.params.podOwner);
+  let pod = getOrCreateEigenPod(event.params.eigenPod, staker.id);
 
-  // Create EigenPod entity
-  let pod = new EigenPod(event.params.eigenPod.toHexString());
-  pod.address = event.params.eigenPod;
-  pod.owner = staker.id;
-
-  // Initialize metrics
-  pod.totalShares = BigInt.fromI32(0);
-  pod.depositCount = BigInt.fromI32(0);
-  pod.withdrawalCount = BigInt.fromI32(0);
-
-  // Set timestamps
-  pod.deployedAt = event.block.timestamp;
-  pod.lastActivityAt = event.block.timestamp;
-
-  // Create deployment event
+  // Create pure event entity
   let deploymentEvent = new PodDeployed(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   deploymentEvent.transactionHash = event.transaction.hash;
   deploymentEvent.logIndex = event.logIndex;
   deploymentEvent.blockNumber = event.block.number;
   deploymentEvent.blockTimestamp = event.block.timestamp;
   deploymentEvent.contractAddress = event.address;
+
+  // Event-specific fields
   deploymentEvent.pod = pod.id;
   deploymentEvent.owner = staker.id;
-
-  // Link deployment event to pod
-  pod.deploymentEvent = deploymentEvent.id;
-
-  // Update staker
-  staker.lastActivityAt = event.block.timestamp;
 
   // Save entities
   staker.save();
   pod.save();
   deploymentEvent.save();
 
-  log.info("PodDeployed processed successfully", []);
+  log.info("PodDeployed event saved: {}", [deploymentEvent.id]);
 }
 
 // ========================================
@@ -80,241 +72,156 @@ export function handlePodDeployed(event: PodDeployedEvent): void {
 export function handleBeaconChainETHDeposited(
   event: BeaconChainETHDeposited
 ): void {
-  log.info("Processing BeaconChainETHDeposited: pod owner {} amount {}", [
-    event.params.podOwner.toHexString(),
-    event.params.amount.toString(),
+  log.info("Processing BeaconChainETHDeposited event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load staker
-  let staker = getOrCreateStaker(event.params.podOwner, event.block.timestamp);
+  // Create minimal lookup entity if needed
+  let staker = getOrCreateStaker(event.params.podOwner);
 
-  // Get the pod (should be exactly one pod per staker)
-  let pod: EigenPod | null = null;
-  let eigenPods = staker.eigenPods.load();
-  if (eigenPods.length > 0) {
-    pod = eigenPods[0];
-  }
-
-  // Create deposit event
+  // Create pure event entity
   let deposit = new BeaconChainDeposit(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   deposit.transactionHash = event.transaction.hash;
   deposit.logIndex = event.logIndex;
   deposit.blockNumber = event.block.number;
   deposit.blockTimestamp = event.block.timestamp;
   deposit.contractAddress = event.address;
-  deposit.pod = pod != null ? pod.id : null;
+
+  // Event-specific fields
+  deposit.pod = null; // Will be linked in PostgreSQL via podOwner relationship
   deposit.podOwner = staker.id;
   deposit.amount = event.params.amount;
-
-  // Update pod metrics if pod exists
-  if (pod != null) {
-    pod.depositCount = pod.depositCount.plus(BigInt.fromI32(1));
-    pod.lastActivityAt = event.block.timestamp;
-    pod.save();
-  } else {
-    log.warning("No EigenPod found for staker {} - this shouldn't happen", [
-      staker.id,
-    ]);
-  }
-
-  // Update staker
-  staker.lastActivityAt = event.block.timestamp;
 
   // Save entities
   staker.save();
   deposit.save();
 
-  log.info("BeaconChainETHDeposited processed successfully", []);
+  log.info("BeaconChainETHDeposited event saved: {}", [deposit.id]);
 }
-
 // ========================================
-// CRITICAL POD SHARE UPDATES (INCLUDES SLASHING EFFECTS)
+// POD SHARE UPDATES
 // ========================================
 
 export function handlePodSharesUpdated(event: PodSharesUpdated): void {
-  log.info("Processing PodSharesUpdated: pod owner {} shares delta {}", [
-    event.params.podOwner.toHexString(),
-    event.params.sharesDelta.toString(),
+  log.info("Processing PodSharesUpdated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load staker
-  let staker = getOrCreateStaker(event.params.podOwner, event.block.timestamp);
+  // Create minimal lookup entity if needed
+  let staker = getOrCreateStaker(event.params.podOwner);
 
-  // Get the pod (should be exactly one pod per staker)
-  let pod: EigenPod | null = null;
-  let eigenPods = staker.eigenPods.load();
-  if (eigenPods.length > 0) {
-    pod = eigenPods[0];
-  }
-
-  // Create pod shares update event
+  // Create pure event entity
   let sharesUpdate = new PodSharesUpdate(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   sharesUpdate.transactionHash = event.transaction.hash;
   sharesUpdate.logIndex = event.logIndex;
   sharesUpdate.blockNumber = event.block.number;
   sharesUpdate.blockTimestamp = event.block.timestamp;
   sharesUpdate.contractAddress = event.address;
-  sharesUpdate.pod = pod != null ? pod.id : null; // NOW SET CORRECTLY
+
+  // Event-specific fields
+  sharesUpdate.pod = null; // Will be linked in PostgreSQL
   sharesUpdate.podOwner = staker.id;
   sharesUpdate.sharesDelta = event.params.sharesDelta;
   sharesUpdate.newTotalShares = null; // This event doesn't include new total
   sharesUpdate.updateType = "SHARES_UPDATED";
 
-  // UPDATE POD SHARES - THIS IS THE KEY PART
-  if (pod != null) {
-    // Update pod's total shares with the delta
-    pod.totalShares = pod.totalShares.plus(event.params.sharesDelta);
-
-    // Set the newTotalShares in the event for reference
-    sharesUpdate.newTotalShares = pod.totalShares;
-
-    pod.lastActivityAt = event.block.timestamp;
-    pod.save();
-  } else {
-    log.warning("No EigenPod found for staker {} during shares update", [
-      staker.id,
-    ]);
-  }
-
-  // Update staker
-  staker.lastActivityAt = event.block.timestamp;
-
-  // Important: Negative sharesDelta could indicate slashing!
-  if (event.params.sharesDelta.lt(BigInt.fromI32(0))) {
-    log.warning(
-      "POTENTIAL SLASHING: Pod owner {} lost {} shares, new total: {}",
-      [
-        event.params.podOwner.toHexString(),
-        event.params.sharesDelta.abs().toString(),
-        pod != null ? pod.totalShares.toString() : "unknown",
-      ]
-    );
-  }
-
   // Save entities
   staker.save();
   sharesUpdate.save();
 
-  log.info("PodSharesUpdated processed successfully", []);
+  log.info("PodSharesUpdated event saved: {}", [sharesUpdate.id]);
 }
 
 export function handleNewTotalShares(event: NewTotalShares): void {
-  log.info("Processing NewTotalShares: pod owner {} new total {}", [
-    event.params.podOwner.toHexString(),
-    event.params.newTotalShares.toString(),
+  log.info("Processing NewTotalShares event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load staker
-  let staker = getOrCreateStaker(event.params.podOwner, event.block.timestamp);
+  // Create minimal lookup entity if needed
+  let staker = getOrCreateStaker(event.params.podOwner);
 
-  // Get the pod (should be exactly one pod per staker)
-  let pod: EigenPod | null = null;
-  let eigenPods = staker.eigenPods.load();
-  if (eigenPods.length > 0) {
-    pod = eigenPods[0];
-  }
-
-  // Calculate delta from old total to new total
-  let sharesDelta = BigInt.fromI32(0);
-  if (pod != null) {
-    sharesDelta = event.params.newTotalShares.minus(pod.totalShares);
-  }
-
-  // Create pod shares update event
+  // Create pure event entity
   let sharesUpdate = new PodSharesUpdate(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   sharesUpdate.transactionHash = event.transaction.hash;
   sharesUpdate.logIndex = event.logIndex;
   sharesUpdate.blockNumber = event.block.number;
   sharesUpdate.blockTimestamp = event.block.timestamp;
   sharesUpdate.contractAddress = event.address;
-  sharesUpdate.pod = pod != null ? pod.id : null; // NOW SET CORRECTLY
+
+  // Event-specific fields
+  sharesUpdate.pod = null; // Will be linked in PostgreSQL
   sharesUpdate.podOwner = staker.id;
-  sharesUpdate.sharesDelta = sharesDelta; // NOW CALCULATED
+  sharesUpdate.sharesDelta = BigInt.fromI32(0); // Can't calculate without state
   sharesUpdate.newTotalShares = event.params.newTotalShares;
   sharesUpdate.updateType = "NEW_TOTAL_SHARES";
-
-  // UPDATE POD SHARES - CRITICAL
-  if (pod != null) {
-    let oldTotal = pod.totalShares;
-    pod.totalShares = event.params.newTotalShares; // Set to absolute new total
-    pod.lastActivityAt = event.block.timestamp;
-
-    // Log significant changes
-    if (sharesDelta.lt(BigInt.fromI32(0))) {
-      log.warning(
-        "SHARES DECREASED: Pod owner {} shares: {} -> {}, delta: {}",
-        [
-          event.params.podOwner.toHexString(),
-          oldTotal.toString(),
-          pod.totalShares.toString(),
-          sharesDelta.toString(),
-        ]
-      );
-    } else if (sharesDelta.gt(BigInt.fromI32(0))) {
-      log.info("SHARES INCREASED: Pod owner {} shares: {} -> {}, delta: +{}", [
-        event.params.podOwner.toHexString(),
-        oldTotal.toString(),
-        pod.totalShares.toString(),
-        sharesDelta.toString(),
-      ]);
-    }
-
-    pod.save();
-  } else {
-    log.warning(
-      "No EigenPod found for staker {} during new total shares update",
-      [staker.id]
-    );
-  }
-
-  // Update staker
-  staker.lastActivityAt = event.block.timestamp;
 
   // Save entities
   staker.save();
   sharesUpdate.save();
 
-  log.info("NewTotalShares processed successfully", []);
+  log.info("NewTotalShares event saved: {}", [sharesUpdate.id]);
 }
 
 // ========================================
-// WITHDRAWALS
+// WITHDRAWAL EVENTS
 // ========================================
 
 export function handleBeaconChainETHWithdrawalCompleted(
   event: BeaconChainETHWithdrawalCompleted
 ): void {
-  log.info(
-    "Processing BeaconChainETHWithdrawalCompleted: pod owner {} shares {}",
-    [event.params.podOwner.toHexString(), event.params.shares.toString()]
-  );
+  log.info("Processing BeaconChainETHWithdrawalCompleted event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
 
-  // Load staker
-  let staker = getOrCreateStaker(event.params.podOwner, event.block.timestamp);
+  // Create minimal lookup entity if needed
+  let staker = getOrCreateStaker(event.params.podOwner);
 
-  // Get the pod (should be exactly one pod per staker)
-  let pod: EigenPod | null = null;
-  let eigenPods = staker.eigenPods.load();
-  if (eigenPods.length > 0) {
-    pod = eigenPods[0];
-  }
-
-  // Create withdrawal event
-  let withdrawal = new BeaconChainWithdrawal(
+  // Create pure event entity (specific type for this withdrawal)
+  let withdrawalCompleted = new BeaconChainETHWithdrawalCompletedEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
+  withdrawalCompleted.transactionHash = event.transaction.hash;
+  withdrawalCompleted.logIndex = event.logIndex;
+  withdrawalCompleted.blockNumber = event.block.number;
+  withdrawalCompleted.blockTimestamp = event.block.timestamp;
+  withdrawalCompleted.contractAddress = event.address;
+
+  // Event-specific fields
+  withdrawalCompleted.podOwner = staker.id;
+  withdrawalCompleted.shares = event.params.shares;
+  withdrawalCompleted.nonce = event.params.nonce;
+  withdrawalCompleted.delegatedAddress = event.params.delegatedAddress;
+  withdrawalCompleted.withdrawer = event.params.withdrawer;
+  withdrawalCompleted.withdrawalRoot = event.params.withdrawalRoot;
+
+  // Also create generic BeaconChainWithdrawal event for consistency
+  let withdrawal = new BeaconChainWithdrawal(
+    event.transaction.hash.toHexString() +
+      "-" +
+      event.logIndex.toString() +
+      "-generic"
+  );
+
   withdrawal.transactionHash = event.transaction.hash;
   withdrawal.logIndex = event.logIndex;
   withdrawal.blockNumber = event.block.number;
   withdrawal.blockTimestamp = event.block.timestamp;
   withdrawal.contractAddress = event.address;
-  withdrawal.pod = pod != null ? pod.id : null; // NOW SET CORRECTLY
+  withdrawal.pod = null; // Will be linked in PostgreSQL
   withdrawal.podOwner = staker.id;
   withdrawal.shares = event.params.shares;
   withdrawal.nonce = event.params.nonce;
@@ -322,112 +229,162 @@ export function handleBeaconChainETHWithdrawalCompleted(
   withdrawal.withdrawer = event.params.withdrawer;
   withdrawal.withdrawalRoot = event.params.withdrawalRoot;
 
-  // Update pod metrics
-  if (pod != null) {
-    pod.withdrawalCount = pod.withdrawalCount.plus(BigInt.fromI32(1));
-    pod.lastActivityAt = event.block.timestamp;
-    pod.save();
-  } else {
-    log.warning("No EigenPod found for staker {} during withdrawal", [
-      staker.id,
-    ]);
-  }
-
-  // Update staker
-  staker.withdrawalCount = staker.withdrawalCount.plus(BigInt.fromI32(1));
-  staker.lastActivityAt = event.block.timestamp;
-
   // Save entities
   staker.save();
+  withdrawalCompleted.save();
   withdrawal.save();
 
-  log.info("BeaconChainETHWithdrawalCompleted processed successfully", []);
+  log.info("BeaconChainETHWithdrawalCompleted event saved: {}", [
+    withdrawalCompleted.id,
+  ]);
 }
 
 // ========================================
-// CRITICAL BEACON CHAIN SLASHING (DIRECT VALIDATOR PENALTIES)
+// SLASHING EVENTS
 // ========================================
 
 export function handleBeaconChainSlashingFactorDecreased(
   event: BeaconChainSlashingFactorDecreased
 ): void {
-  log.info("BEACON CHAIN SLASHING: Pod owner {} factor {} -> {}", [
-    event.params.staker.toHexString(),
-    event.params.prevBeaconChainSlashingFactor.toString(),
-    event.params.newBeaconChainSlashingFactor.toString(),
+  log.info("Processing BeaconChainSlashingFactorDecreased event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load staker
-  let staker = getOrCreateStaker(event.params.staker, event.block.timestamp);
+  // Create minimal lookup entity if needed
+  let staker = getOrCreateStaker(event.params.staker);
 
-  // Create slashing event
+  // Create pure event entity
   let slashingEvent = new BeaconChainSlashingEvent(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   slashingEvent.transactionHash = event.transaction.hash;
   slashingEvent.logIndex = event.logIndex;
   slashingEvent.blockNumber = event.block.number;
   slashingEvent.blockTimestamp = event.block.timestamp;
   slashingEvent.contractAddress = event.address;
+
+  // Event-specific fields
   slashingEvent.staker = staker.id;
   slashingEvent.prevBeaconChainSlashingFactor =
     event.params.prevBeaconChainSlashingFactor;
   slashingEvent.newBeaconChainSlashingFactor =
     event.params.newBeaconChainSlashingFactor;
 
-  // Update staker - this is a serious event
-  staker.lastActivityAt = event.block.timestamp;
-
   // Save entities
   staker.save();
   slashingEvent.save();
 
-  log.info(
-    "BEACON CHAIN SLASHING PROCESSED: Staker {} slashed on beacon chain",
-    [staker.id]
-  );
+  log.info("BeaconChainSlashingFactorDecreased event saved: {}", [
+    slashingEvent.id,
+  ]);
 }
 
 // ========================================
-// SHARE BURNING (POST-SLASHING RESOLUTION)
+// SYSTEM EVENTS
 // ========================================
 
 export function handleBurnableETHSharesIncreased(
   event: BurnableETHSharesIncreased
 ): void {
-  log.info("Processing BurnableETHSharesIncreased: shares {}", [
-    event.params.shares.toString(),
+  log.info("Processing BurnableETHSharesIncreased event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // This is a system-wide event indicating ETH shares that can be burned
-  // Usually happens after slashing events as part of the resolution process
-
-  log.info(
-    "BurnableETHSharesIncreased processed: {} shares marked for burning",
-    [event.params.shares.toString()]
+  // Create pure event entity
+  let burnableEvent = new BurnableETHSharesIncreasedEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
+  burnableEvent.transactionHash = event.transaction.hash;
+  burnableEvent.logIndex = event.logIndex;
+  burnableEvent.blockNumber = event.block.number;
+  burnableEvent.blockTimestamp = event.block.timestamp;
+  burnableEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  burnableEvent.shares = event.params.shares;
+
+  burnableEvent.save();
+
+  log.info("BurnableETHSharesIncreased event saved: {}", [burnableEvent.id]);
+}
+
+export function handlePectraForkTimestampSet(
+  event: PectraForkTimestampSet
+): void {
+  log.info("Processing PectraForkTimestampSet event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
+
+  // Create pure event entity
+  let pectraEvent = new PectraForkTimestampSetEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  );
+
+  // Base event fields
+  pectraEvent.transactionHash = event.transaction.hash;
+  pectraEvent.logIndex = event.logIndex;
+  pectraEvent.blockNumber = event.block.number;
+  pectraEvent.blockTimestamp = event.block.timestamp;
+  pectraEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  pectraEvent.newPectraForkTimestamp = event.params.newPectraForkTimestamp;
+
+  pectraEvent.save();
+
+  log.info("PectraForkTimestampSet event saved: {}", [pectraEvent.id]);
+}
+
+export function handleProofTimestampSetterSet(
+  event: ProofTimestampSetterSet
+): void {
+  log.info("Processing ProofTimestampSetterSet event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
+
+  // Create pure event entity
+  let proofEvent = new ProofTimestampSetterSetEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  );
+
+  // Base event fields
+  proofEvent.transactionHash = event.transaction.hash;
+  proofEvent.logIndex = event.logIndex;
+  proofEvent.blockNumber = event.block.number;
+  proofEvent.blockTimestamp = event.block.timestamp;
+  proofEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  proofEvent.newProofTimestampSetter = event.params.newProofTimestampSetter;
+
+  proofEvent.save();
+
+  log.info("ProofTimestampSetterSet event saved: {}", [proofEvent.id]);
 }
 
 // ========================================
-// HELPER FUNCTIONS
+// MINIMAL HELPER FUNCTIONS
 // ========================================
 
-function getOrCreateStaker(address: Address, timestamp: BigInt): Staker {
+function getOrCreateStaker(address: Address): Staker {
   let staker = Staker.load(address.toHexString());
   if (staker == null) {
     staker = new Staker(address.toHexString());
     staker.address = address;
-    staker.delegatedOperator = null;
-    staker.delegatedAt = null;
-
-    // Initialize counters
-    staker.totalStrategies = BigInt.fromI32(0);
-    staker.delegationChangeCount = BigInt.fromI32(0);
-    staker.withdrawalCount = BigInt.fromI32(0);
-
-    // Set timestamps
-    staker.firstActivityAt = timestamp;
-    staker.lastActivityAt = timestamp;
   }
   return staker;
+}
+
+function getOrCreateEigenPod(address: Address, ownerId: string): EigenPod {
+  let pod = EigenPod.load(address.toHexString());
+  if (pod == null) {
+    pod = new EigenPod(address.toHexString());
+    pod.address = address;
+    pod.owner = ownerId;
+  }
+  return pod;
 }
