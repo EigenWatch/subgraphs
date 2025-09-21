@@ -89,7 +89,7 @@ dataSources:
         - OperatorSlashed
         - AllocationEvent
         - OperatorSetCreated
-        - OperatorSetMembership
+        - OperatorSetMembershipActivityLog
         - OperatorAddedToOperatorSet
         - OperatorRemovedFromOperatorSet
         - AVSMetadataUpdate

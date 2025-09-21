@@ -22,11 +22,11 @@ import {
   OperatorSlashed as OperatorSlashedEntity,
   AllocationEvent,
   OperatorSetCreated as OperatorSetCreatedEntity,
-  OperatorSetMembership,
   OperatorAddedToOperatorSet as OperatorAddedEntity,
   OperatorRemovedFromOperatorSet as OperatorRemovedEntity,
   AVSMetadataUpdate,
   StrategyOperatorSetEvent,
+  OperatorSetMembershipActivityLog,
 } from "../generated/schema";
 
 import { BigInt, log, Address } from "@graphprotocol/graph-ts";
@@ -320,7 +320,7 @@ export function handleOperatorAddedToOperatorSet(
     event.params.operatorSet.id.toString(),
   ]);
 
-  // Load entities
+  // Load operator
   let operator = Operator.load(event.params.operator.toHexString());
   if (operator == null) {
     log.warning("Operator not found for set addition: {}", [
@@ -329,6 +329,7 @@ export function handleOperatorAddedToOperatorSet(
     return;
   }
 
+  // Load operator set
   let operatorSetId =
     event.params.operatorSet.avs.toHexString() +
     "-" +
@@ -347,18 +348,6 @@ export function handleOperatorAddedToOperatorSet(
   operatorSet.memberCount = operatorSet.memberCount.plus(BigInt.fromI32(1));
   operatorSet.lastActivityAt = event.block.timestamp;
 
-  // Create membership entity
-  let membershipId =
-    operator.id + "-" + operatorSet.id + "-" + event.block.timestamp.toString();
-  let membership = new OperatorSetMembership(membershipId);
-  membership.operator = operator.id;
-  membership.operatorSet = operatorSet.id;
-  membership.joinedAt = event.block.timestamp;
-  membership.joinedAtBlock = event.block.number;
-  membership.leftAt = null;
-  membership.leftAtBlock = null;
-  // membership.isActive = true // TODO: Verify that this key is not needed since we can know if the membership is active using the leftAt
-
   // Create join event
   let joinEvent = new OperatorAddedEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
@@ -371,14 +360,23 @@ export function handleOperatorAddedToOperatorSet(
   joinEvent.operator = operator.id;
   joinEvent.operatorSet = operatorSet.id;
 
-  // Link events
-  membership.joinEvent = joinEvent.id;
+  // Create activity log
+  let activityLogId =
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString();
+  let activityLog = new OperatorSetMembershipActivityLog(activityLogId);
+  activityLog.operator = operator.id;
+  activityLog.operatorSet = operatorSet.id;
+  activityLog.activityType = "JOIN";
+  activityLog.timestamp = event.block.timestamp;
+  activityLog.blockNumber = event.block.number;
+  activityLog.transactionHash = event.transaction.hash;
+  activityLog.joinEvent = joinEvent.id;
 
-  // Save entities
+  // Save
   operator.save();
   operatorSet.save();
-  membership.save();
   joinEvent.save();
+  activityLog.save();
 
   log.info("OperatorAddedToOperatorSet processed successfully", []);
 }
@@ -394,7 +392,7 @@ export function handleOperatorRemovedFromOperatorSet(
     ]
   );
 
-  // Load entities
+  // Load operator
   let operator = Operator.load(event.params.operator.toHexString());
   if (operator == null) {
     log.warning("Operator not found for set removal: {}", [
@@ -403,6 +401,7 @@ export function handleOperatorRemovedFromOperatorSet(
     return;
   }
 
+  // Load operator set
   let operatorSetId =
     event.params.operatorSet.avs.toHexString() +
     "-" +
@@ -423,9 +422,6 @@ export function handleOperatorRemovedFromOperatorSet(
   operatorSet.memberCount = operatorSet.memberCount.minus(BigInt.fromI32(1));
   operatorSet.lastActivityAt = event.block.timestamp;
 
-  // TODO: Update existing membership to mark as inactive - UPDATE "Will removed is active from membership instead"
-  // This requires iterating through memberships to find the active one
-
   // Create removal event
   let removeEvent = new OperatorRemovedEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
@@ -438,17 +434,26 @@ export function handleOperatorRemovedFromOperatorSet(
   removeEvent.operator = operator.id;
   removeEvent.operatorSet = operatorSet.id;
 
-  // Save entities
+  // Create activity log
+  let activityLogId =
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString();
+  let activityLog = new OperatorSetMembershipActivityLog(activityLogId);
+  activityLog.operator = operator.id;
+  activityLog.operatorSet = operatorSet.id;
+  activityLog.activityType = "REMOVE";
+  activityLog.timestamp = event.block.timestamp;
+  activityLog.blockNumber = event.block.number;
+  activityLog.transactionHash = event.transaction.hash;
+  activityLog.leaveEvent = removeEvent.id;
+
+  // Save
   operator.save();
   operatorSet.save();
   removeEvent.save();
+  activityLog.save();
 
   log.info("OperatorRemovedFromOperatorSet processed successfully", []);
 }
-
-// ========================================
-// STRATEGY MANAGEMENT EVENTS
-// ========================================
 
 export function handleStrategyAddedToOperatorSet(
   event: StrategyAddedToOperatorSet

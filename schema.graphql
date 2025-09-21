@@ -44,7 +44,7 @@ type Operator @entity(immutable: false) {
   shareEvents: [OperatorShareEvent!]! @derivedFrom(field: "operator")
   slashingEvents: [OperatorSlashed!]! @derivedFrom(field: "operator")
   avsRegistrations: [OperatorAVSRegistration!]! @derivedFrom(field: "operator")
-  operatorSetMemberships: [OperatorSetMembership!]!
+  operatorSetMembershipActivityLogs: [OperatorSetMembershipActivityLog!]!
     @derivedFrom(field: "operator")
   allocationEvents: [AllocationEvent!]! @derivedFrom(field: "operator")
   commissionEvents: [OperatorCommissionEvent!]! @derivedFrom(field: "operator")
@@ -141,7 +141,8 @@ type OperatorSet @entity(immutable: false) {
 
   # Relationships to events
   creationEvent: OperatorSetCreated!
-  memberships: [OperatorSetMembership!]! @derivedFrom(field: "operatorSet")
+  membershipActivityLogs: [OperatorSetMembershipActivityLog!]!
+    @derivedFrom(field: "operatorSet")
   allocationEvents: [AllocationEvent!]! @derivedFrom(field: "operatorSet")
   slashingEvents: [OperatorSlashed!]! @derivedFrom(field: "operatorSet")
   strategyEvents: [StrategyOperatorSetEvent!]!
@@ -190,20 +191,17 @@ type StakerDelegation @entity(immutable: false) {
   logIndex: BigInt!
 }
 
-type OperatorSetMembership @entity(immutable: false) {
-  id: ID! # operator-operatorSet-joinedAt
+type OperatorSetMembershipActivityLog @entity(immutable: true) {
+  id: ID! # txHash-logIndex
   operator: Operator!
   operatorSet: OperatorSet!
+  activityType: String! # "JOIN" | "REMOVE"
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
 
-  # Membership timeline
-  joinedAt: BigInt!
-  joinedAtBlock: BigInt!
-  leftAt: BigInt
-  leftAtBlock: BigInt
-  isActive: Boolean!
-
-  # Event references
-  joinEvent: OperatorAddedToOperatorSet!
+  # Optional: link back to raw event entities
+  joinEvent: OperatorAddedToOperatorSet
   leaveEvent: OperatorRemovedFromOperatorSet
 }
 
