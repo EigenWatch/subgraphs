@@ -241,7 +241,7 @@ type WithdrawalEvent implements BaseEvent @entity(immutable: true) {
 
   # Event data
   withdrawalRoot: Bytes!
-  staker: Staker!
+  staker: Staker
   delegatedTo: Operator
   withdrawer: Bytes!
   nonce: BigInt!
