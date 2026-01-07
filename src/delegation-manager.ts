@@ -41,6 +41,14 @@ export function handleOperatorRegistered(event: OperatorRegistered): void {
     event.transaction.hash.toHexString(),
   ]);
 
+  // DATA QUALITY GUARD: Operator address must not be zero
+  if (event.params.operator.equals(Address.zero())) {
+    log.critical(
+      "INVARIANT VIOLATION: OperatorRegistered with zero address at tx {}",
+      [event.transaction.hash.toHexString()]
+    );
+  }
+
   // Create minimal lookup entity if needed
   let operator = getOrCreateOperator(event.params.operator);
 
@@ -141,6 +149,20 @@ export function handleStakerDelegated(event: StakerDelegated): void {
   log.info("Processing StakerDelegated event: {}", [
     event.transaction.hash.toHexString(),
   ]);
+
+  // DATA QUALITY GUARDS: Staker and operator must not be zero addresses
+  if (event.params.staker.equals(Address.zero())) {
+    log.critical(
+      "INVARIANT VIOLATION: StakerDelegated with zero staker at tx {}",
+      [event.transaction.hash.toHexString()]
+    );
+  }
+  if (event.params.operator.equals(Address.zero())) {
+    log.critical(
+      "INVARIANT VIOLATION: StakerDelegated with zero operator at tx {}",
+      [event.transaction.hash.toHexString()]
+    );
+  }
 
   // Create minimal lookup entities if needed
   let staker = getOrCreateStaker(event.params.staker);
@@ -394,6 +416,18 @@ export function handleSlashingWithdrawalQueued(
   // Extract withdrawal struct data
   let withdrawal = event.params.withdrawal;
   let sharesToWithdraw = event.params.sharesToWithdraw;
+
+  // DATA QUALITY GUARD: Strategies and shares arrays must match in length
+  if (withdrawal.strategies.length != sharesToWithdraw.length) {
+    log.critical(
+      "INVARIANT VIOLATION: Strategy/shares array mismatch ({} vs {}) at tx {}",
+      [
+        withdrawal.strategies.length.toString(),
+        sharesToWithdraw.length.toString(),
+        event.transaction.hash.toHexString(),
+      ]
+    );
+  }
 
   // Create minimal lookup entities if needed
   let staker = getOrCreateStaker(withdrawal.staker);

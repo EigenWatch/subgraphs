@@ -34,6 +34,13 @@ export function handleDeposit(event: DepositEvent): void {
     event.transaction.hash.toHexString(),
   ]);
 
+  // DATA QUALITY GUARD: Staker address must not be zero
+  if (event.params.staker.equals(Address.zero())) {
+    log.critical("INVARIANT VIOLATION: Deposit with zero staker at tx {}", [
+      event.transaction.hash.toHexString(),
+    ]);
+  }
+
   // Create minimal lookup entities if needed
   let staker = getOrCreateStaker(event.params.staker);
   let strategy = getOrCreateStrategy(event.params.strategy);

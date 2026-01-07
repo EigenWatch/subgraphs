@@ -46,6 +46,14 @@ export function handleOperatorSlashed(event: OperatorSlashed): void {
     event.transaction.hash.toHexString(),
   ]);
 
+  // DATA QUALITY GUARD: Operator address must not be zero
+  if (event.params.operator.equals(Address.zero())) {
+    log.critical(
+      "INVARIANT VIOLATION: OperatorSlashed with zero operator at tx {}",
+      [event.transaction.hash.toHexString()]
+    );
+  }
+
   // Create minimal lookup entities if needed
   let operator = getOrCreateOperator(event.params.operator);
   let operatorSet = getOrCreateOperatorSet(
