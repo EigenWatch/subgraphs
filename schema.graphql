@@ -249,6 +249,9 @@ type WithdrawalEvent implements BaseEvent @entity(immutable: true) {
   strategies: [String!]!
   shares: [BigInt!]!
   eventType: WithdrawalEventType!
+
+  "Indicates if this record has complete data (false for COMPLETED events from SlashingWithdrawalCompleted)"
+  isComplete: Boolean!
 }
 
 type OperatorSharesSlashed implements BaseEvent @entity(immutable: true) {

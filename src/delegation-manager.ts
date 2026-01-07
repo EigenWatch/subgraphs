@@ -426,6 +426,7 @@ export function handleSlashingWithdrawalQueued(
   );
   withdrawalEvent.shares = sharesToWithdraw;
   withdrawalEvent.eventType = "QUEUED";
+  withdrawalEvent.isComplete = true;
 
   // Save entities
   staker.save();
@@ -466,6 +467,12 @@ export function handleSlashingWithdrawalCompleted(
   withdrawalEvent.strategies = [];
   withdrawalEvent.shares = [];
   withdrawalEvent.eventType = "COMPLETED";
+  withdrawalEvent.isComplete = false;
+
+  log.warning(
+    "SlashingWithdrawalCompleted event {} has incomplete data - only withdrawalRoot available",
+    [withdrawalEvent.id]
+  );
 
   withdrawalEvent.save();
 
