@@ -27,6 +27,7 @@ type Operator @entity(immutable: false) {
 
   # Relationships to events only
   registrationEvents: [OperatorRegistered!]! @derivedFrom(field: "operator")
+  shares: [OperatorStrategyShare!]! @derivedFrom(field: "operator")
   shareEvents: [OperatorShareEvent!]! @derivedFrom(field: "operator")
   slashingEvents: [OperatorSlashed!]! @derivedFrom(field: "operator")
   avsRegistrationEvents: [OperatorAVSRegistrationStatusUpdated!]!
@@ -83,9 +84,12 @@ type AVS @entity(immutable: false) {
 type Strategy @entity(immutable: false) {
   id: ID! # strategy contract address
   address: Bytes!
+  underlyingToken: Bytes
+  tokenDecimals: Int
 
   # Relationships to events only
   depositEvents: [Deposit!]! @derivedFrom(field: "strategy")
+  operatorShares: [OperatorStrategyShare!]! @derivedFrom(field: "strategy")
   shareEvents: [OperatorShareEvent!]! @derivedFrom(field: "strategy")
   allocationEvents: [AllocationEvent!]! @derivedFrom(field: "strategy")
   whitelistEvents: [StrategyWhitelistEvent!]! @derivedFrom(field: "strategy")
@@ -113,6 +117,18 @@ type OperatorSet @entity(immutable: false) {
     @derivedFrom(field: "operatorSet")
   operatorDirectedRewardsEvents: [OperatorDirectedOperatorSetRewardsSubmission!]!
     @derivedFrom(field: "operatorSet")
+}
+
+type OperatorStrategyShare @entity(immutable: false) {
+  id: ID! # operator-strategy
+  operator: Operator!
+  strategy: Strategy!
+  totalShares: BigInt!
+
+  # Metadata
+  lastUpdatedBlock: BigInt!
+  lastUpdatedTimestamp: BigInt!
+  lastUpdatedTxHash: Bytes!
 }
 
 type EigenPod @entity(immutable: false) {
@@ -920,6 +936,7 @@ enum DelegationType {
 enum ShareEventType {
   INCREASED
   DECREASED
+  SLASHED
 }
 
 enum WithdrawalEventType {

@@ -373,6 +373,27 @@ dataSources:
         - event: ProofTimestampSetterSet(address)
           handler: handleProofTimestampSetterSet
       file: ./src/eigen-pod-manager.ts
+templates:
+  - kind: ethereum/contract
+    name: Strategy
+    network: mainnet
+    source:
+      abi: Strategy
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/strategy.ts
+      entities:
+        - Strategy
+      abis:
+        - name: Strategy
+          file: ./abis/Strategy.json
+      eventHandlers:
+        - event: StrategyTokenSet(address,uint8)
+          handler: handleStrategyTokenSet
+        - event: ExchangeRateEmitted(uint256)
+          handler: handleExchangeRateEmitted
 # ========================================
 # CONTRACT ADDRESSES (Mainnet)
 # ========================================

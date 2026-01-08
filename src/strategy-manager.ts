@@ -22,6 +22,7 @@ import {
   BurnableSharesDecreased as BurnableSharesDecreasedEntity,
   AVS,
 } from "../generated/schema";
+import { Strategy as StrategyTemplate } from "../generated/templates";
 
 import { log, Address, BigInt } from "@graphprotocol/graph-ts";
 
@@ -135,6 +136,9 @@ export function handleStrategyAddedToDepositWhitelist(
   log.info("StrategyAddedToDepositWhitelist event saved: {}", [
     whitelistEvent.id,
   ]);
+
+  // Dynamically index the new strategy
+  StrategyTemplate.create(event.params.strategy);
 }
 
 export function handleStrategyRemovedFromDepositWhitelist(

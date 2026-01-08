@@ -28,6 +28,7 @@ import {
   DepositScalingFactorUpdated as DepositScalingFactorUpdatedEntity,
   WithdrawalEvent,
   OperatorSharesSlashed as OperatorSharesSlashedEntity,
+  OperatorStrategyShare,
 } from "../generated/schema";
 
 import { log, Address, BigInt } from "@graphprotocol/graph-ts";
@@ -323,6 +324,25 @@ export function handleOperatorSharesIncreased(
   strategy.save();
   shareEvent.save();
 
+  // Update running totals
+  let operatorStrategyShareId = operator.id + "-" + strategy.id;
+  let operatorStrategyShare = OperatorStrategyShare.load(
+    operatorStrategyShareId
+  );
+  if (operatorStrategyShare == null) {
+    operatorStrategyShare = new OperatorStrategyShare(operatorStrategyShareId);
+    operatorStrategyShare.operator = operator.id;
+    operatorStrategyShare.strategy = strategy.id;
+    operatorStrategyShare.totalShares = BigInt.fromI32(0);
+  }
+  operatorStrategyShare.totalShares = operatorStrategyShare.totalShares.plus(
+    event.params.shares
+  );
+  operatorStrategyShare.lastUpdatedBlock = event.block.number;
+  operatorStrategyShare.lastUpdatedTimestamp = event.block.timestamp;
+  operatorStrategyShare.lastUpdatedTxHash = event.transaction.hash;
+  operatorStrategyShare.save();
+
   log.info("OperatorSharesIncreased event saved: {}", [shareEvent.id]);
 }
 
@@ -363,6 +383,25 @@ export function handleOperatorSharesDecreased(
   strategy.save();
   shareEvent.save();
 
+  // Update running totals
+  let operatorStrategyShareId = operator.id + "-" + strategy.id;
+  let operatorStrategyShare = OperatorStrategyShare.load(
+    operatorStrategyShareId
+  );
+  if (operatorStrategyShare == null) {
+    operatorStrategyShare = new OperatorStrategyShare(operatorStrategyShareId);
+    operatorStrategyShare.operator = operator.id;
+    operatorStrategyShare.strategy = strategy.id;
+    operatorStrategyShare.totalShares = BigInt.fromI32(0);
+  }
+  operatorStrategyShare.totalShares = operatorStrategyShare.totalShares.minus(
+    event.params.shares
+  );
+  operatorStrategyShare.lastUpdatedBlock = event.block.number;
+  operatorStrategyShare.lastUpdatedTimestamp = event.block.timestamp;
+  operatorStrategyShare.lastUpdatedTxHash = event.transaction.hash;
+  operatorStrategyShare.save();
+
   log.info("OperatorSharesDecreased event saved: {}", [shareEvent.id]);
 }
 
@@ -398,6 +437,45 @@ export function handleOperatorSharesSlashed(
   operator.save();
   strategy.save();
   slashingEvent.save();
+
+  // Update running totals
+  let operatorStrategyShareId = operator.id + "-" + strategy.id;
+  let operatorStrategyShare = OperatorStrategyShare.load(
+    operatorStrategyShareId
+  );
+  if (operatorStrategyShare == null) {
+    // Should exist if slashed, but handle gracefully
+    operatorStrategyShare = new OperatorStrategyShare(operatorStrategyShareId);
+    operatorStrategyShare.operator = operator.id;
+    operatorStrategyShare.strategy = strategy.id;
+    operatorStrategyShare.totalShares = BigInt.fromI32(0);
+  }
+  operatorStrategyShare.totalShares = operatorStrategyShare.totalShares.minus(
+    event.params.totalSlashedShares
+  );
+  operatorStrategyShare.lastUpdatedBlock = event.block.number;
+  operatorStrategyShare.lastUpdatedTimestamp = event.block.timestamp;
+  operatorStrategyShare.lastUpdatedTxHash = event.transaction.hash;
+  operatorStrategyShare.save();
+
+  // Create unified OperatorShareEvent for history
+  let shareEvent = new OperatorShareEvent(
+    event.transaction.hash.toHexString() +
+      "-" +
+      event.logIndex.toString() +
+      "-slashed"
+  );
+  shareEvent.transactionHash = event.transaction.hash;
+  shareEvent.logIndex = event.logIndex;
+  shareEvent.blockNumber = event.block.number;
+  shareEvent.blockTimestamp = event.block.timestamp;
+  shareEvent.contractAddress = event.address;
+  shareEvent.operator = operator.id;
+  shareEvent.staker = "SLASHED"; // No specific staker for total slashed
+  shareEvent.strategy = strategy.id;
+  shareEvent.shares = event.params.totalSlashedShares; // Positive value, eventType implies direction
+  shareEvent.eventType = "SLASHED";
+  shareEvent.save();
 
   log.info("OperatorSharesSlashed event saved: {}", [slashingEvent.id]);
 }
