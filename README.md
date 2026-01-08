@@ -13,10 +13,11 @@
 
 EigenWatch indexes six core EigenLayer smart contracts to enable:
 
-* **Operator Risk Scoring** – Slashing history, commission behavior, AVS performance
-* **Delegation Monitoring** – Real-time flows, volatility, and concentration
-* **Economic Analysis** – Rewards tracking, sustainability signals
-* **Portfolio Insights** – AVS exposure, strategy allocation, diversification metrics
+- **Operator Risk Scoring** – Slashing history, commission behavior, AVS performance
+- **Delegation Monitoring** – Real-time flows, volatility, and concentration
+- **TVS Indexing** – Running totals of operator shares per strategy for TVS calculation
+- **Economic Analysis** – Rewards tracking, sustainability signals
+- **Portfolio Insights** – AVS exposure, strategy allocation, diversification metrics
 
 ---
 
@@ -37,8 +38,8 @@ EigenWatch indexes six core EigenLayer smart contracts to enable:
 
 ### Prerequisites
 
-* Node.js 18+
-* [Graph CLI](https://thegraph.com/docs/en/developer/quick-start/)
+- Node.js 18+
+- [Graph CLI](https://thegraph.com/docs/en/developer/quick-start/)
 
 ### Setup & Deploy
 
@@ -60,12 +61,13 @@ graph deploy eigenwatch-ethereum
 
 ## 📘 Core Entities
 
-* **Operator** – Delegation history, slashing, commissions, AVS memberships
-* **Staker** – Individual delegators and their relationships
-* **AVS** – Actively Validated Services with operator sets
-* **Strategy** – Restaking tokens (e.g., stETH, rETH)
-* **EigenPod** – Native ETH restaking pods
-* **Events** – Immutable records for slashing, rewards, delegation, etc.
+- **Operator** – Delegation history, slashing, commissions, AVS memberships
+- **OperatorStrategyShare** – Running totals of shares for an operator-strategy pair
+- **Staker** – Individual delegators and their relationships
+- **AVS** – Actively Validated Services with operator sets
+- **Strategy** – Restaking tokens (e.g., stETH, rETH) with metadata
+- **EigenPod** – Native ETH restaking pods
+- **Events** – Immutable records for slashing, rewards, delegation, etc.
 
 ---
 
@@ -91,15 +93,39 @@ query GetOperatorRisk($id: String!) {
 ```graphql
 query GetRecentEvents($from: BigInt!) {
   operatorSlasheds(where: { blockTimestamp_gte: $from }) {
-    operator { id address }
+    operator {
+      id
+      address
+    }
     description
     blockTimestamp
   }
   stakerDelegationEvents(where: { blockTimestamp_gte: $from }) {
     delegationType
-    operator { id }
-    staker { id }
+    operator {
+      id
+    }
+    staker {
+      id
+    }
     blockTimestamp
+  }
+}
+```
+
+### Operator TVS Shares
+
+```graphql
+query GetOperatorShares($operatorId: ID!) {
+  operator(id: $operatorId) {
+    shares {
+      strategy {
+        id
+        underlyingToken
+        tokenDecimals
+      }
+      totalShares
+    }
   }
 }
 ```
@@ -110,18 +136,18 @@ query GetRecentEvents($from: BigInt!) {
 
 ## 🧠 Use Cases
 
-* **Operator Monitoring** – Reputation, slashing, commission changes
-* **AVS Risk Modeling** – Slashing frequency, operator quality
-* **Delegation Analysis** – Flow tracking, HHI-based concentration scoring
-* **Portfolio Views** – AVS exposure and strategy allocation per operator
+- **Operator Monitoring** – Reputation, slashing, commission changes
+- **AVS Risk Modeling** – Slashing frequency, operator quality
+- **Delegation Analysis** – Flow tracking, HHI-based concentration scoring
+- **Portfolio Views** – AVS exposure and strategy allocation per operator
 
 ---
 
 ## 📈 Performance
 
-* **Real-Time Indexing** – <60s latency
-* **Initial Sync** – 2–24 hrs (optimized start blocks)
-* **Query Performance** – <2s for most complex queries
+- **Real-Time Indexing** – <60s latency
+- **Initial Sync** – 2–24 hrs (optimized start blocks)
+- **Query Performance** – <2s for most complex queries
 
 ---
 
@@ -154,9 +180,9 @@ graph deploy eigenwatch --node http://127.0.0.1:8020 --ipfs http://127.0.0.1:500
 
 ## 📞 Support & Community
 
-* 📘 Docs: [EigenWatch Docs](https://docs.eigenwatch.xyz)
-* 🛠️ Report Issues: [GitHub Issues](../../issues)
-* 📊 Playground: [GraphQL Explorer](https://thegraph.com/studio/subgraph/eigenwatch-ethereum/playground)
+- 📘 Docs: [EigenWatch Docs](https://docs.eigenwatch.xyz)
+- 🛠️ Report Issues: [GitHub Issues](../../issues)
+- 📊 Playground: [GraphQL Explorer](https://thegraph.com/studio/subgraph/eigenwatch-ethereum/playground)
 
 ---
 
