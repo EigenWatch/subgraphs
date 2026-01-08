@@ -14,13 +14,14 @@ The `DelegationManager` is the core contract responsible for managing the relati
 
 - **Operator**: Created/Updated upon registration.
 - **Staker**: Created/Updated upon delegation or share events.
+- **OperatorStrategyShare**: (Mutable) Tracks the current total shares of an operator for a specific strategy.
 
 ### Event Entities
 
 - `OperatorRegistered`: Records when a new operator registers.
 - `StakerDelegationEvent`: Records when a staker delegates to an operator.
 - `StakerUndelegated`: Records when a staker undelegates.
-- `OperatorShareEvent`: Tracks increases/decreases in operator shares (critical for TVL and voting power calculations).
+- `OperatorShareEvent`: Tracks increases/decreases/slashing in operator shares (critical for TVL and voting power calculations).
 - `OperatorSharesSlashed`: Records slashing events affecting operator shares.
 - `WithdrawalEvent`: Tracks the queuing and completion of withdrawals.
 
@@ -41,9 +42,9 @@ The `DelegationManager` is the core contract responsible for managing the relati
 
 These handlers are critical for maintaining an accurate history of an operator's backing.
 
-- **`handleOperatorSharesIncreased`**: Creates an `OperatorShareEvent` (Type: INCREASED).
-- **`handleOperatorSharesDecreased`**: Creates an `OperatorShareEvent` (Type: DECREASED).
-- **`handleOperatorSharesSlashed`**: Creates an `OperatorSharesSlashed` event.
+- **`handleOperatorSharesIncreased`**: Creates an `OperatorShareEvent` (Type: INCREASED) and increments `OperatorStrategyShare`.
+- **`handleOperatorSharesDecreased`**: Creates an `OperatorShareEvent` (Type: DECREASED) and decrements `OperatorStrategyShare`.
+- **`handleOperatorSharesSlashed`**: Creates an `OperatorShareEvent` (Type: SLASHED) and decrements `OperatorStrategyShare`.
 
 ### Withdrawals
 

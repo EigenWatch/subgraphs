@@ -14,6 +14,10 @@ EigenLayer is a complex protocol with frequent state changes (shares, delegation
 2.  **Minimal Lookup Entities**: Mutable entities (like `Operator`, `Staker`, `AVS`) are kept minimal. They primarily serve as "anchors" to link related events together using GraphQL `@derivedFrom` relationships. They do **not** store complex state like "current total shares" or "current delegate".
 3.  **Raw Fidelity**: Event entities map 1:1 with the on-chain events. We avoid heavy transformation logic in the handlers to ensure the subgraph data faithfully represents the on-chain history.
 
+### 4. Hybrid State (The Exception)
+
+While we prioritize immutable events, certain use cases (like TVS calculation) require efficient access to the _current_ state. For these specific cases, we introduce mutable entities (e.g., `OperatorStrategyShare`) that maintain running totals. These are always accompanied by a complete history of immutable events (`OperatorShareEvent`) to preserve auditability.
+
 ## Data Model
 
 ### 1. Base Event Interface

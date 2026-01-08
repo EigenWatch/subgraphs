@@ -29,7 +29,7 @@ The `StrategyManager` handles the deposit of assets into strategies (LSTs) and t
 
 ### Strategy Lifecycle
 
-- **`handleStrategyAddedToDepositWhitelist`**: Records that a strategy is now open for deposits.
+- **`handleStrategyAddedToDepositWhitelist`**: Records that a strategy is now open for deposits. **Crucially, this handler also instantiates the `Strategy` template to begin indexing the new strategy contract.**
 - **`handleStrategyRemovedFromDepositWhitelist`**: Records that a strategy is closed for deposits.
 - **`handleStrategyWhitelisterChanged`**: Tracks administrative changes to the whitelister.
 
