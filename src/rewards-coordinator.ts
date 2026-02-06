@@ -40,6 +40,7 @@ import {
 } from "../generated/schema";
 
 import { log, Address, BigInt } from "@graphprotocol/graph-ts";
+import { incrementEventCounter } from "./utils";
 
 // ========================================
 // REWARDS SUBMISSION EVENTS
@@ -92,6 +93,7 @@ export function handleAVSRewardsSubmissionCreated(
   // Save entities
   avs.save();
   submission.save();
+  incrementEventCounter("RewardsSubmission", event.block.number, event.block.timestamp);
 
   log.info("AVSRewardsSubmissionCreated event saved: {}", [submission.id]);
 }
@@ -138,6 +140,7 @@ export function handleRewardsSubmissionForAllCreated(
   submission.duration = rewardsSubmission.duration;
 
   submission.save();
+  incrementEventCounter("RewardsSubmission", event.block.number, event.block.timestamp);
 
   log.info("RewardsSubmissionForAllCreated event saved: {}", [submission.id]);
 }
@@ -184,6 +187,7 @@ export function handleRewardsSubmissionForAllEarnersCreated(
   submission.duration = rewardsSubmission.duration;
 
   submission.save();
+  incrementEventCounter("RewardsSubmission", event.block.number, event.block.timestamp);
 
   log.info("RewardsSubmissionForAllEarnersCreated event saved: {}", [
     submission.id,
@@ -250,6 +254,7 @@ export function handleOperatorDirectedAVSRewardsSubmissionCreated(
   // Save entities
   avs.save();
   submission.save();
+  incrementEventCounter("OperatorDirectedAVSRewardsSubmission", event.block.number, event.block.timestamp);
 
   log.info("OperatorDirectedAVSRewardsSubmissionCreated event saved: {}", [
     submission.id,
@@ -320,6 +325,7 @@ export function handleOperatorDirectedOperatorSetRewardsSubmissionCreated(
   // Save entities
   operatorSet.save();
   submission.save();
+  incrementEventCounter("OperatorDirectedOperatorSetRewardsSubmission", event.block.number, event.block.timestamp);
 
   log.info(
     "OperatorDirectedOperatorSetRewardsSubmissionCreated event saved: {}",
@@ -370,6 +376,7 @@ export function handleOperatorAVSSplitBipsSet(
   operator.save();
   avs.save();
   splitEvent.save();
+  incrementEventCounter("OperatorAVSSplitBipsSetEntity", event.block.number, event.block.timestamp);
 
   log.info("OperatorAVSSplitBipsSet event saved: {}", [splitEvent.id]);
 }
@@ -410,6 +417,7 @@ export function handleOperatorPISplitBipsSet(
   // Save entities
   operator.save();
   splitEvent.save();
+  incrementEventCounter("OperatorPISplitBipsSetEntity", event.block.number, event.block.timestamp);
 
   log.info("OperatorPISplitBipsSet event saved: {}", [splitEvent.id]);
 }
@@ -456,6 +464,7 @@ export function handleOperatorSetSplitBipsSet(
   operator.save();
   operatorSet.save();
   splitEvent.save();
+  incrementEventCounter("OperatorSetSplitBipsSetEntity", event.block.number, event.block.timestamp);
 
   log.info("OperatorSetSplitBipsSet event saved: {}", [splitEvent.id]);
 }
@@ -491,6 +500,7 @@ export function handleDistributionRootSubmitted(
   distributionEvent.activatedAt = event.params.activatedAt;
 
   distributionEvent.save();
+  incrementEventCounter("DistributionRootSubmittedEntity", event.block.number, event.block.timestamp);
 
   log.info("DistributionRootSubmitted event saved: {}", [distributionEvent.id]);
 }
@@ -518,6 +528,7 @@ export function handleDistributionRootDisabled(
   distributionEvent.rootIndex = event.params.rootIndex;
 
   distributionEvent.save();
+  incrementEventCounter("DistributionRootDisabledEntity", event.block.number, event.block.timestamp);
 
   log.info("DistributionRootDisabled event saved: {}", [distributionEvent.id]);
 }
@@ -548,6 +559,7 @@ export function handleRewardsClaimed(event: RewardsClaimed): void {
   claimedEvent.claimedAmount = event.params.claimedAmount;
 
   claimedEvent.save();
+  incrementEventCounter("RewardsClaimedEntity", event.block.number, event.block.timestamp);
 
   log.info("RewardsClaimed event saved: {}", [claimedEvent.id]);
 }
@@ -578,6 +590,7 @@ export function handleRewardsUpdaterSet(event: RewardsUpdaterSet): void {
   updaterEvent.newRewardsUpdater = event.params.newRewardsUpdater;
 
   updaterEvent.save();
+  incrementEventCounter("RewardsUpdaterSetEntity", event.block.number, event.block.timestamp);
 
   log.info("RewardsUpdaterSet event saved: {}", [updaterEvent.id]);
 }
@@ -607,6 +620,7 @@ export function handleRewardsForAllSubmitterSet(
   submitterEvent.newValue = event.params.newValue;
 
   submitterEvent.save();
+  incrementEventCounter("RewardsForAllSubmitterSetEntity", event.block.number, event.block.timestamp);
 
   log.info("RewardsForAllSubmitterSet event saved: {}", [submitterEvent.id]);
 }
@@ -633,6 +647,7 @@ export function handleActivationDelaySet(event: ActivationDelaySet): void {
   delayEvent.newActivationDelay = event.params.newActivationDelay;
 
   delayEvent.save();
+  incrementEventCounter("ActivationDelaySetEntity", event.block.number, event.block.timestamp);
 
   log.info("ActivationDelaySet event saved: {}", [delayEvent.id]);
 }
@@ -665,6 +680,7 @@ export function handleDefaultOperatorSplitBipsSet(
   );
 
   splitEvent.save();
+  incrementEventCounter("DefaultOperatorSplitBipsSetEntity", event.block.number, event.block.timestamp);
 
   log.info("DefaultOperatorSplitBipsSet event saved: {}", [splitEvent.id]);
 }
@@ -692,6 +708,7 @@ export function handleClaimerForSet(event: ClaimerForSet): void {
   claimerEvent.claimer = event.params.claimer;
 
   claimerEvent.save();
+  incrementEventCounter("ClaimerForSetEntity", event.block.number, event.block.timestamp);
 
   log.info("ClaimerForSet event saved: {}", [claimerEvent.id]);
 }

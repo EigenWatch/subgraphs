@@ -25,6 +25,7 @@ import {
 import { Strategy as StrategyTemplate } from "../generated/templates";
 
 import { log, Address, BigInt } from "@graphprotocol/graph-ts";
+import { incrementEventCounter } from "./utils";
 
 // ========================================
 // DEPOSIT EVENTS
@@ -67,6 +68,7 @@ export function handleDeposit(event: DepositEvent): void {
   staker.save();
   strategy.save();
   deposit.save();
+  incrementEventCounter("Deposit", event.block.number, event.block.timestamp);
 
   log.info("Deposit event saved: {}", [deposit.id]);
 }
@@ -99,6 +101,7 @@ export function handleStrategyWhitelisterChanged(
   whitelisterEvent.newAddress = event.params.newAddress;
 
   whitelisterEvent.save();
+  incrementEventCounter("StrategyWhitelisterChangedEntity", event.block.number, event.block.timestamp);
 
   log.info("StrategyWhitelisterChanged event saved: {}", [whitelisterEvent.id]);
 }
@@ -132,6 +135,7 @@ export function handleStrategyAddedToDepositWhitelist(
   // Save entities
   strategy.save();
   whitelistEvent.save();
+  incrementEventCounter("StrategyWhitelistEvent", event.block.number, event.block.timestamp);
 
   log.info("StrategyAddedToDepositWhitelist event saved: {}", [
     whitelistEvent.id,
@@ -170,6 +174,7 @@ export function handleStrategyRemovedFromDepositWhitelist(
   // Save entities
   strategy.save();
   whitelistEvent.save();
+  incrementEventCounter("StrategyWhitelistEvent", event.block.number, event.block.timestamp);
 
   log.info("StrategyRemovedFromDepositWhitelist event saved: {}", [
     whitelistEvent.id,
@@ -216,6 +221,7 @@ export function handleBurnOrRedistributableSharesIncreased(
   operatorSet.save();
   strategy.save();
   burnableEvent.save();
+  incrementEventCounter("BurnOrRedistributableSharesIncreasedEntity", event.block.number, event.block.timestamp);
 
   log.info("BurnOrRedistributableSharesIncreased event saved: {}", [
     burnableEvent.id,
@@ -258,6 +264,7 @@ export function handleBurnOrRedistributableSharesDecreased(
   operatorSet.save();
   strategy.save();
   burnableEvent.save();
+  incrementEventCounter("BurnOrRedistributableSharesDecreasedEntity", event.block.number, event.block.timestamp);
 
   log.info("BurnOrRedistributableSharesDecreased event saved: {}", [
     burnableEvent.id,
@@ -293,6 +300,7 @@ export function handleBurnableSharesDecreased(
   // Save entities
   strategy.save();
   burnableEvent.save();
+  incrementEventCounter("BurnableSharesDecreasedEntity", event.block.number, event.block.timestamp);
 
   log.info("BurnableSharesDecreased event saved: {}", [burnableEvent.id]);
 }

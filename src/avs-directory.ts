@@ -11,7 +11,8 @@ import {
   OperatorAVSRegistrationStatusUpdated,
 } from "../generated/schema";
 
-import { log, Address } from "@graphprotocol/graph-ts";
+import { log, Address, BigInt } from "@graphprotocol/graph-ts";
+import { incrementEventCounter } from "./utils";
 
 // ========================================
 // LEGACY M2 OPERATOR-AVS REGISTRATION
@@ -55,6 +56,7 @@ export function handleOperatorAVSRegistrationStatusUpdated(
   operator.save();
   avs.save();
   statusEvent.save();
+  incrementEventCounter("OperatorAVSRegistrationStatusUpdated", event.block.number, event.block.timestamp);
 
   log.info("OperatorAVSRegistrationStatusUpdated event saved: {}", [
     statusEvent.id,

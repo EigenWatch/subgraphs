@@ -32,6 +32,7 @@ import {
 } from "../generated/schema";
 
 import { log, Address, BigInt } from "@graphprotocol/graph-ts";
+import { incrementEventCounter } from "./utils";
 
 // ========================================
 // OPERATOR LIFECYCLE EVENTS
@@ -72,6 +73,7 @@ export function handleOperatorRegistered(event: OperatorRegistered): void {
   // Save entities
   operator.save();
   registrationEvent.save();
+  incrementEventCounter("OperatorRegisteredEntity", event.block.number, event.block.timestamp);
 
   log.info("OperatorRegistered event saved: {}", [registrationEvent.id]);
 }
@@ -105,6 +107,7 @@ export function handleDelegationApproverUpdated(
   // Save entities
   operator.save();
   approverEvent.save();
+  incrementEventCounter("DelegationApproverUpdatedEntity", event.block.number, event.block.timestamp);
 
   log.info("DelegationApproverUpdated event saved: {}", [approverEvent.id]);
 }
@@ -138,6 +141,7 @@ export function handleOperatorMetadataURIUpdated(
   // Save entities
   operator.save();
   metadataUpdate.save();
+  incrementEventCounter("OperatorMetadataUpdate", event.block.number, event.block.timestamp);
 
   log.info("OperatorMetadataURIUpdated event saved: {}", [metadataUpdate.id]);
 }
@@ -190,6 +194,7 @@ export function handleStakerDelegated(event: StakerDelegated): void {
   staker.save();
   operator.save();
   delegationEvent.save();
+  incrementEventCounter("StakerDelegationEvent", event.block.number, event.block.timestamp);
 
   log.info("StakerDelegated event saved: {}", [delegationEvent.id]);
 }
@@ -224,6 +229,7 @@ export function handleStakerUndelegated(event: StakerUndelegated): void {
   staker.save();
   operator.save();
   delegationEvent.save();
+  incrementEventCounter("StakerDelegationEvent", event.block.number, event.block.timestamp);
 
   log.info("StakerUndelegated event saved: {}", [delegationEvent.id]);
 }
@@ -277,6 +283,8 @@ export function handleStakerForceUndelegated(
   operator.save();
   forceUndelegationEvent.save();
   delegationEvent.save();
+  incrementEventCounter("StakerForceUndelegatedEntity", event.block.number, event.block.timestamp);
+  incrementEventCounter("StakerDelegationEvent", event.block.number, event.block.timestamp);
 
   log.info("StakerForceUndelegated event saved: {}", [
     forceUndelegationEvent.id,
@@ -323,6 +331,7 @@ export function handleOperatorSharesIncreased(
   staker.save();
   strategy.save();
   shareEvent.save();
+  incrementEventCounter("OperatorShareEvent", event.block.number, event.block.timestamp);
 
   // Update running totals
   let operatorStrategyShareId = operator.id + "-" + strategy.id;
@@ -382,6 +391,7 @@ export function handleOperatorSharesDecreased(
   staker.save();
   strategy.save();
   shareEvent.save();
+  incrementEventCounter("OperatorShareEvent", event.block.number, event.block.timestamp);
 
   // Update running totals
   let operatorStrategyShareId = operator.id + "-" + strategy.id;
@@ -437,6 +447,7 @@ export function handleOperatorSharesSlashed(
   operator.save();
   strategy.save();
   slashingEvent.save();
+  incrementEventCounter("OperatorSharesSlashedEntity", event.block.number, event.block.timestamp);
 
   // Update running totals
   let operatorStrategyShareId = operator.id + "-" + strategy.id;
@@ -476,6 +487,7 @@ export function handleOperatorSharesSlashed(
   shareEvent.shares = event.params.totalSlashedShares; // Positive value, eventType implies direction
   shareEvent.eventType = "SLASHED";
   shareEvent.save();
+  incrementEventCounter("OperatorShareEvent", event.block.number, event.block.timestamp);
 
   log.info("OperatorSharesSlashed event saved: {}", [slashingEvent.id]);
 }
@@ -546,6 +558,7 @@ export function handleSlashingWithdrawalQueued(
     operator.save();
   }
   withdrawalEvent.save();
+  incrementEventCounter("WithdrawalEvent", event.block.number, event.block.timestamp);
 
   log.info("SlashingWithdrawalQueued event saved: {}", [withdrawalEvent.id]);
 }
@@ -587,6 +600,7 @@ export function handleSlashingWithdrawalCompleted(
   );
 
   withdrawalEvent.save();
+  incrementEventCounter("WithdrawalEvent", event.block.number, event.block.timestamp);
 
   log.info("SlashingWithdrawalCompleted event saved: {}", [withdrawalEvent.id]);
 }
@@ -627,6 +641,7 @@ export function handleDepositScalingFactorUpdated(
   staker.save();
   strategy.save();
   scalingEvent.save();
+  incrementEventCounter("DepositScalingFactorUpdatedEntity", event.block.number, event.block.timestamp);
 
   log.info("DepositScalingFactorUpdated event saved: {}", [scalingEvent.id]);
 }

@@ -131,6 +131,13 @@ type OperatorStrategyShare @entity(immutable: false) {
   lastUpdatedTxHash: Bytes!
 }
 
+type EventCounter @entity(immutable: false) {
+  id: ID! # Entity type name (e.g. "OperatorRegisteredEntity")
+  count: BigInt!
+  lastUpdatedBlock: BigInt!
+  lastUpdatedTimestamp: BigInt!
+}
+
 type EigenPod @entity(immutable: false) {
   id: ID! # pod address
   address: Bytes!

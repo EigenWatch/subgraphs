@@ -36,6 +36,7 @@ import {
 } from "../generated/schema";
 
 import { log, Address, BigInt } from "@graphprotocol/graph-ts";
+import { incrementEventCounter } from "./utils";
 
 // ========================================
 // SLASHING EVENTS
@@ -86,6 +87,7 @@ export function handleOperatorSlashed(event: OperatorSlashed): void {
   operator.save();
   operatorSet.save();
   slashingEvent.save();
+  incrementEventCounter("OperatorSlashedEntity", event.block.number, event.block.timestamp);
 
   log.info("OperatorSlashed event saved: {}", [slashingEvent.id]);
 }
@@ -131,6 +133,7 @@ export function handleAllocationUpdated(event: AllocationUpdated): void {
   operatorSet.save();
   strategy.save();
   allocationEvent.save();
+  incrementEventCounter("AllocationEvent", event.block.number, event.block.timestamp);
 
   log.info("AllocationUpdated event saved: {}", [allocationEvent.id]);
 }
@@ -163,6 +166,7 @@ export function handleAllocationDelaySet(event: AllocationDelaySet): void {
   // Save entities
   operator.save();
   delayEvent.save();
+  incrementEventCounter("AllocationDelaySetEntity", event.block.number, event.block.timestamp);
 
   log.info("AllocationDelaySet event saved: {}", [delayEvent.id]);
 }
@@ -199,6 +203,7 @@ export function handleEncumberedMagnitudeUpdated(
   operator.save();
   strategy.save();
   magnitudeEvent.save();
+  incrementEventCounter("EncumberedMagnitudeUpdatedEntity", event.block.number, event.block.timestamp);
 
   log.info("EncumberedMagnitudeUpdated event saved: {}", [magnitudeEvent.id]);
 }
@@ -233,6 +238,7 @@ export function handleMaxMagnitudeUpdated(event: MaxMagnitudeUpdated): void {
   operator.save();
   strategy.save();
   maxMagnitudeEvent.save();
+  incrementEventCounter("MaxMagnitudeUpdatedEntity", event.block.number, event.block.timestamp);
 
   log.info("MaxMagnitudeUpdated event saved: {}", [maxMagnitudeEvent.id]);
 }
@@ -274,6 +280,7 @@ export function handleOperatorSetCreated(event: OperatorSetCreated): void {
   avs.save();
   operatorSet.save();
   creationEvent.save();
+  incrementEventCounter("OperatorSetCreatedEntity", event.block.number, event.block.timestamp);
 
   log.info("OperatorSetCreated event saved: {}", [creationEvent.id]);
 }
@@ -312,6 +319,7 @@ export function handleOperatorAddedToOperatorSet(
   operator.save();
   operatorSet.save();
   joinEvent.save();
+  incrementEventCounter("OperatorAddedEntity", event.block.number, event.block.timestamp);
 
   log.info("OperatorAddedToOperatorSet event saved: {}", [joinEvent.id]);
 }
@@ -350,6 +358,7 @@ export function handleOperatorRemovedFromOperatorSet(
   operator.save();
   operatorSet.save();
   removeEvent.save();
+  incrementEventCounter("OperatorRemovedEntity", event.block.number, event.block.timestamp);
 
   log.info("OperatorRemovedFromOperatorSet event saved: {}", [removeEvent.id]);
 }
@@ -393,6 +402,7 @@ export function handleStrategyAddedToOperatorSet(
   operatorSet.save();
   strategy.save();
   strategyEvent.save();
+  incrementEventCounter("StrategyOperatorSetEvent", event.block.number, event.block.timestamp);
 
   log.info("StrategyAddedToOperatorSet event saved: {}", [strategyEvent.id]);
 }
@@ -432,6 +442,7 @@ export function handleStrategyRemovedFromOperatorSet(
   operatorSet.save();
   strategy.save();
   strategyEvent.save();
+  incrementEventCounter("StrategyOperatorSetEvent", event.block.number, event.block.timestamp);
 
   log.info("StrategyRemovedFromOperatorSet event saved: {}", [
     strategyEvent.id,
@@ -471,6 +482,7 @@ export function handleAVSMetadataURIUpdated(
   // Save entities
   avs.save();
   metadataUpdate.save();
+  incrementEventCounter("AVSMetadataUpdate", event.block.number, event.block.timestamp);
 
   log.info("AVSMetadataURIUpdated event saved: {}", [metadataUpdate.id]);
 }
@@ -512,6 +524,7 @@ export function handleRedistributionAddressSet(
   // Save entities
   operatorSet.save();
   redistributionEvent.save();
+  incrementEventCounter("RedistributionAddressSetEntity", event.block.number, event.block.timestamp);
 
   log.info("RedistributionAddressSet event saved: {}", [
     redistributionEvent.id,
@@ -545,6 +558,7 @@ export function handleAVSRegistrarSet(event: AVSRegistrarSet): void {
   // Save entities
   avs.save();
   registrarEvent.save();
+  incrementEventCounter("AVSRegistrarSetEntity", event.block.number, event.block.timestamp);
 
   log.info("AVSRegistrarSet event saved: {}", [registrarEvent.id]);
 }

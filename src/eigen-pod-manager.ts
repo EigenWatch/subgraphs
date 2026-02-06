@@ -27,6 +27,7 @@ import {
 } from "../generated/schema";
 
 import { log, Address, BigInt } from "@graphprotocol/graph-ts";
+import { incrementEventCounter } from "./utils";
 
 // ========================================
 // POD LIFECYCLE EVENTS
@@ -61,6 +62,7 @@ export function handlePodDeployed(event: PodDeployedEvent): void {
   staker.save();
   pod.save();
   deploymentEvent.save();
+  incrementEventCounter("PodDeployed", event.block.number, event.block.timestamp);
 
   log.info("PodDeployed event saved: {}", [deploymentEvent.id]);
 }
@@ -99,6 +101,7 @@ export function handleBeaconChainETHDeposited(
   // Save entities
   staker.save();
   deposit.save();
+  incrementEventCounter("BeaconChainDeposit", event.block.number, event.block.timestamp);
 
   log.info("BeaconChainETHDeposited event saved: {}", [deposit.id]);
 }
@@ -136,6 +139,7 @@ export function handlePodSharesUpdated(event: PodSharesUpdated): void {
   // Save entities
   staker.save();
   sharesUpdate.save();
+  incrementEventCounter("PodSharesUpdate", event.block.number, event.block.timestamp);
 
   log.info("PodSharesUpdated event saved: {}", [sharesUpdate.id]);
 }
@@ -170,6 +174,7 @@ export function handleNewTotalShares(event: NewTotalShares): void {
   // Save entities
   staker.save();
   sharesUpdate.save();
+  incrementEventCounter("PodSharesUpdate", event.block.number, event.block.timestamp);
 
   log.info("NewTotalShares event saved: {}", [sharesUpdate.id]);
 }
@@ -233,6 +238,8 @@ export function handleBeaconChainETHWithdrawalCompleted(
   staker.save();
   withdrawalCompleted.save();
   withdrawal.save();
+  incrementEventCounter("BeaconChainETHWithdrawalCompletedEntity", event.block.number, event.block.timestamp);
+  incrementEventCounter("BeaconChainWithdrawal", event.block.number, event.block.timestamp);
 
   log.info("BeaconChainETHWithdrawalCompleted event saved: {}", [
     withdrawalCompleted.id,
@@ -275,6 +282,7 @@ export function handleBeaconChainSlashingFactorDecreased(
   // Save entities
   staker.save();
   slashingEvent.save();
+  incrementEventCounter("BeaconChainSlashingEvent", event.block.number, event.block.timestamp);
 
   log.info("BeaconChainSlashingFactorDecreased event saved: {}", [
     slashingEvent.id,
@@ -308,6 +316,7 @@ export function handleBurnableETHSharesIncreased(
   burnableEvent.shares = event.params.shares;
 
   burnableEvent.save();
+  incrementEventCounter("BurnableETHSharesIncreasedEntity", event.block.number, event.block.timestamp);
 
   log.info("BurnableETHSharesIncreased event saved: {}", [burnableEvent.id]);
 }
@@ -335,6 +344,7 @@ export function handlePectraForkTimestampSet(
   pectraEvent.newPectraForkTimestamp = event.params.newPectraForkTimestamp;
 
   pectraEvent.save();
+  incrementEventCounter("PectraForkTimestampSetEntity", event.block.number, event.block.timestamp);
 
   log.info("PectraForkTimestampSet event saved: {}", [pectraEvent.id]);
 }
@@ -362,6 +372,7 @@ export function handleProofTimestampSetterSet(
   proofEvent.newProofTimestampSetter = event.params.newProofTimestampSetter;
 
   proofEvent.save();
+  incrementEventCounter("ProofTimestampSetterSetEntity", event.block.number, event.block.timestamp);
 
   log.info("ProofTimestampSetterSet event saved: {}", [proofEvent.id]);
 }
