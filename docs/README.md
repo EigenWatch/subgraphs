@@ -8,6 +8,8 @@ This documentation is organized as follows:
 
 - **[Architecture](./architecture.md)**: Understand the "Event-Focused" design philosophy and the data model.
 - **[Setup & Deployment](./setup.md)**: Instructions for installing dependencies, building, and deploying the subgraph.
+- **[Self-Hosted Infrastructure](./self-hosted-infrastructure.md)**: Docker Compose stack, RPC proxy, PostgreSQL configuration, and monitoring endpoints.
+- **[Event Counters](./event-counters.md)**: Per-entity-type event counters for pipeline completeness tracking.
 
 ### Contract Documentation
 
