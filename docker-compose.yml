@@ -1,5 +1,11 @@
 version: "3"
 services:
+  rpc-proxy:
+    build: ./rpc-proxy
+    environment:
+      RPC_GATEWAY_URL: ${RPC_GATEWAY_URL:-https://gateway.thebuidl.xyz/query}
+      RPC_API_KEY: ${RPC_API_KEY}
+      PORT: 3000
   graph-node:
     image: graphprotocol/graph-node
     ports:
@@ -11,15 +17,14 @@ services:
     depends_on:
       - ipfs
       - postgres
-    extra_hosts:
-      - host.docker.internal:host-gateway
+      - rpc-proxy
     environment:
       postgres_host: postgres
       postgres_user: graph-node
       postgres_pass: let-me-in
       postgres_db: graph-node
       ipfs: "ipfs:5001"
-      ethereum: "mainnet:http://host.docker.internal:8545"
+      ethereum: "mainnet:http://rpc-proxy:3000"
       GRAPH_LOG: info
   ipfs:
     image: ipfs/kubo:v0.17.0
