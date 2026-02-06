@@ -14,115 +14,136 @@ import {
 } from "../generated/DelegationManager/DelegationManager";
 
 import {
+  // Minimal lookup entities
   Operator,
   Staker,
   Strategy,
+  // Event entities only
   OperatorRegistered as OperatorRegisteredEntity,
+  DelegationApproverUpdated as DelegationApproverUpdatedEntity,
   OperatorMetadataUpdate,
   OperatorShareEvent,
-  StakerDelegation,
   StakerDelegationEvent,
+  StakerForceUndelegated as StakerForceUndelegatedEntity,
+  DepositScalingFactorUpdated as DepositScalingFactorUpdatedEntity,
   WithdrawalEvent,
+  OperatorSharesSlashed as OperatorSharesSlashedEntity,
+  OperatorStrategyShare,
 } from "../generated/schema";
 
-import { BigInt, log, Address } from "@graphprotocol/graph-ts";
+import { log, Address, BigInt } from "@graphprotocol/graph-ts";
+import { incrementEventCounter } from "./utils";
 
 // ========================================
 // OPERATOR LIFECYCLE EVENTS
 // ========================================
 
 export function handleOperatorRegistered(event: OperatorRegistered): void {
-  log.info("Processing OperatorRegistered for operator: {}", [
-    event.params.operator.toHexString(),
+  log.info("Processing OperatorRegistered event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Create or load operator entity
-  let operator = getOrCreateOperatorDefensive(
-    event.params.operator,
-    event.block.timestamp
-  );
-  if (operator == null) {
-    operator = new Operator(event.params.operator.toHexString());
-    operator.address = event.params.operator;
-    operator.delegationApprover = event.params.delegationApprover;
-    operator.metadataURI = null;
-
-    // Initialize counters
-    operator.delegatorCount = BigInt.fromI32(0);
-    operator.avsRegistrationCount = BigInt.fromI32(0);
-    operator.operatorSetCount = BigInt.fromI32(0);
-    operator.slashingEventCount = BigInt.fromI32(0);
-
-    // Set registration info (now nullable)
-    operator.registeredAt = event.block.timestamp;
-    operator.registeredAtBlock = event.block.number;
-    operator.registeredAtTransaction = event.transaction.hash;
-    operator.isRegistered = true;
-
-    // Set activity timestamps
-    operator.lastActivityAt = event.block.timestamp;
-    operator.updatedAt = event.block.timestamp;
+  // DATA QUALITY GUARD: Operator address must not be zero
+  if (event.params.operator.equals(Address.zero())) {
+    log.critical(
+      "INVARIANT VIOLATION: OperatorRegistered with zero address at tx {}",
+      [event.transaction.hash.toHexString()]
+    );
   }
 
-  // Create registration event entity
+  // Create minimal lookup entity if needed
+  let operator = getOrCreateOperator(event.params.operator);
+
+  // Create pure event entity with complete data
   let registrationEvent = new OperatorRegisteredEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields (inherited from BaseEvent interface)
   registrationEvent.transactionHash = event.transaction.hash;
   registrationEvent.logIndex = event.logIndex;
   registrationEvent.blockNumber = event.block.number;
   registrationEvent.blockTimestamp = event.block.timestamp;
   registrationEvent.contractAddress = event.address;
+
+  // Event-specific fields
   registrationEvent.operator = operator.id;
   registrationEvent.delegationApprover = event.params.delegationApprover;
-
-  // Link registration event to operator
-  operator.registrationEvent = registrationEvent.id;
 
   // Save entities
   operator.save();
   registrationEvent.save();
+  incrementEventCounter("OperatorRegisteredEntity", event.block.number, event.block.timestamp);
 
-  log.info("OperatorRegistered processed successfully for operator: {}", [
-    event.params.operator.toHexString(),
+  log.info("OperatorRegistered event saved: {}", [registrationEvent.id]);
+}
+
+export function handleDelegationApproverUpdated(
+  event: DelegationApproverUpdated
+): void {
+  log.info("Processing DelegationApproverUpdated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
+
+  // Create minimal lookup entity if needed
+  let operator = getOrCreateOperator(event.params.operator);
+
+  // Create pure event entity
+  let approverEvent = new DelegationApproverUpdatedEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  );
+
+  // Base event fields
+  approverEvent.transactionHash = event.transaction.hash;
+  approverEvent.logIndex = event.logIndex;
+  approverEvent.blockNumber = event.block.number;
+  approverEvent.blockTimestamp = event.block.timestamp;
+  approverEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  approverEvent.operator = operator.id;
+  approverEvent.newDelegationApprover = event.params.newDelegationApprover;
+
+  // Save entities
+  operator.save();
+  approverEvent.save();
+  incrementEventCounter("DelegationApproverUpdatedEntity", event.block.number, event.block.timestamp);
+
+  log.info("DelegationApproverUpdated event saved: {}", [approverEvent.id]);
 }
 
 export function handleOperatorMetadataURIUpdated(
   event: OperatorMetadataURIUpdated
 ): void {
-  log.info("Processing OperatorMetadataURIUpdated for operator: {}", [
-    event.params.operator.toHexString(),
+  log.info("Processing OperatorMetadataURIUpdated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load operator (should exist from registration)
-  let operator = getOrCreateOperatorDefensive(
-    event.params.operator,
-    event.block.timestamp
-  );
+  // Create minimal lookup entity if needed
+  let operator = getOrCreateOperator(event.params.operator);
 
-  // Update operator metadata
-  operator.metadataURI = event.params.metadataURI;
-  operator.lastActivityAt = event.block.timestamp;
-  operator.updatedAt = event.block.timestamp;
-
-  // Create metadata update event
+  // Create pure event entity
   let metadataUpdate = new OperatorMetadataUpdate(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   metadataUpdate.transactionHash = event.transaction.hash;
   metadataUpdate.logIndex = event.logIndex;
   metadataUpdate.blockNumber = event.block.number;
   metadataUpdate.blockTimestamp = event.block.timestamp;
   metadataUpdate.contractAddress = event.address;
+
+  // Event-specific fields
   metadataUpdate.operator = operator.id;
   metadataUpdate.metadataURI = event.params.metadataURI;
 
   // Save entities
   operator.save();
   metadataUpdate.save();
+  incrementEventCounter("OperatorMetadataUpdate", event.block.number, event.block.timestamp);
 
-  log.info("OperatorMetadataURIUpdated processed successfully", []);
+  log.info("OperatorMetadataURIUpdated event saved: {}", [metadataUpdate.id]);
 }
 
 // ========================================
@@ -130,54 +151,41 @@ export function handleOperatorMetadataURIUpdated(
 // ========================================
 
 export function handleStakerDelegated(event: StakerDelegated): void {
-  log.info("Processing StakerDelegated: staker {} to operator {}", [
-    event.params.staker.toHexString(),
-    event.params.operator.toHexString(),
+  log.info("Processing StakerDelegated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Create or load staker
-  let staker = getOrCreateStaker(event.params.staker, event.block.timestamp);
+  // DATA QUALITY GUARDS: Staker and operator must not be zero addresses
+  if (event.params.staker.equals(Address.zero())) {
+    log.critical(
+      "INVARIANT VIOLATION: StakerDelegated with zero staker at tx {}",
+      [event.transaction.hash.toHexString()]
+    );
+  }
+  if (event.params.operator.equals(Address.zero())) {
+    log.critical(
+      "INVARIANT VIOLATION: StakerDelegated with zero operator at tx {}",
+      [event.transaction.hash.toHexString()]
+    );
+  }
 
-  // Load operator (should exist)
-  let operator = getOrCreateOperatorDefensive(
-    event.params.operator,
-    event.block.timestamp
-  );
+  // Create minimal lookup entities if needed
+  let staker = getOrCreateStaker(event.params.staker);
+  let operator = getOrCreateOperator(event.params.operator);
 
-  // Update staker delegation
-  staker.delegatedOperator = operator.id;
-  staker.delegatedAt = event.block.timestamp;
-  staker.delegationChangeCount = staker.delegationChangeCount.plus(
-    BigInt.fromI32(1)
-  );
-  staker.lastActivityAt = event.block.timestamp;
-
-  // Update operator counters
-  operator.delegatorCount = operator.delegatorCount.plus(BigInt.fromI32(1));
-  operator.lastActivityAt = event.block.timestamp;
-  operator.updatedAt = event.block.timestamp;
-
-  // Create delegation relationship entity
-  let delegationId =
-    staker.id + "-" + operator.id + "-" + event.block.timestamp.toString();
-  let delegation = new StakerDelegation(delegationId);
-  delegation.staker = staker.id;
-  delegation.operator = operator.id;
-  delegation.delegationType = "DELEGATED";
-  delegation.transactionHash = event.transaction.hash;
-  delegation.blockNumber = event.block.number;
-  delegation.blockTimestamp = event.block.timestamp;
-  delegation.logIndex = event.logIndex;
-
-  // Create delegation event
+  // Create pure event entity
   let delegationEvent = new StakerDelegationEvent(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   delegationEvent.transactionHash = event.transaction.hash;
   delegationEvent.logIndex = event.logIndex;
   delegationEvent.blockNumber = event.block.number;
   delegationEvent.blockTimestamp = event.block.timestamp;
   delegationEvent.contractAddress = event.address;
+
+  // Event-specific fields
   delegationEvent.staker = staker.id;
   delegationEvent.operator = operator.id;
   delegationEvent.delegationType = "DELEGATED";
@@ -185,67 +193,34 @@ export function handleStakerDelegated(event: StakerDelegated): void {
   // Save entities
   staker.save();
   operator.save();
-  delegation.save();
   delegationEvent.save();
+  incrementEventCounter("StakerDelegationEvent", event.block.number, event.block.timestamp);
 
-  log.info("StakerDelegated processed successfully", []);
+  log.info("StakerDelegated event saved: {}", [delegationEvent.id]);
 }
 
 export function handleStakerUndelegated(event: StakerUndelegated): void {
-  log.info("Processing StakerUndelegated: staker {} from operator {}", [
-    event.params.staker.toHexString(),
-    event.params.operator.toHexString(),
+  log.info("Processing StakerUndelegated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load staker
-  let staker = Staker.load(event.params.staker.toHexString());
-  if (staker == null) {
-    log.warning("Staker not found for undelegation: {}", [
-      event.params.staker.toHexString(),
-    ]);
-    return;
-  }
+  // Create minimal lookup entities if needed
+  let staker = getOrCreateStaker(event.params.staker);
+  let operator = getOrCreateOperator(event.params.operator);
 
-  // Load operator
-  let operator = getOrCreateOperatorDefensive(
-    event.params.operator,
-    event.block.timestamp
-  );
-
-  // Update staker - remove delegation
-  staker.delegatedOperator = null;
-  staker.delegatedAt = null;
-  staker.delegationChangeCount = staker.delegationChangeCount.plus(
-    BigInt.fromI32(1)
-  );
-  staker.lastActivityAt = event.block.timestamp;
-
-  // Update operator counters
-  operator.delegatorCount = operator.delegatorCount.minus(BigInt.fromI32(1));
-  operator.lastActivityAt = event.block.timestamp;
-  operator.updatedAt = event.block.timestamp;
-
-  // Create delegation relationship entity
-  let delegationId =
-    staker.id + "-" + operator.id + "-" + event.block.timestamp.toString();
-  let delegation = new StakerDelegation(delegationId);
-  delegation.staker = staker.id;
-  delegation.operator = operator.id;
-  delegation.delegationType = "UNDELEGATED";
-  delegation.transactionHash = event.transaction.hash;
-  delegation.blockNumber = event.block.number;
-  delegation.blockTimestamp = event.block.timestamp;
-  delegation.logIndex = event.logIndex;
-
-  // Create delegation event
+  // Create pure event entity
   let delegationEvent = new StakerDelegationEvent(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   delegationEvent.transactionHash = event.transaction.hash;
   delegationEvent.logIndex = event.logIndex;
   delegationEvent.blockNumber = event.block.number;
   delegationEvent.blockTimestamp = event.block.timestamp;
   delegationEvent.contractAddress = event.address;
+
+  // Event-specific fields
   delegationEvent.staker = staker.id;
   delegationEvent.operator = operator.id;
   delegationEvent.delegationType = "UNDELEGATED";
@@ -253,64 +228,47 @@ export function handleStakerUndelegated(event: StakerUndelegated): void {
   // Save entities
   staker.save();
   operator.save();
-  delegation.save();
   delegationEvent.save();
+  incrementEventCounter("StakerDelegationEvent", event.block.number, event.block.timestamp);
 
-  log.info("StakerUndelegated processed successfully", []);
+  log.info("StakerUndelegated event saved: {}", [delegationEvent.id]);
 }
 
 export function handleStakerForceUndelegated(
   event: StakerForceUndelegated
 ): void {
-  log.info("Processing StakerForceUndelegated: staker {} from operator {}", [
-    event.params.staker.toHexString(),
-    event.params.operator.toHexString(),
+  log.info("Processing StakerForceUndelegated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load staker
-  let staker = Staker.load(event.params.staker.toHexString());
-  if (staker == null) {
-    log.warning("Staker not found for force undelegation: {}", [
-      event.params.staker.toHexString(),
-    ]);
-    return;
-  }
+  // Create minimal lookup entities if needed
+  let staker = getOrCreateStaker(event.params.staker);
+  let operator = getOrCreateOperator(event.params.operator);
 
-  // Load operator
-  let operator = getOrCreateOperatorDefensive(
-    event.params.operator,
-    event.block.timestamp
-  );
-
-  // Update staker - remove delegation
-  staker.delegatedOperator = null;
-  staker.delegatedAt = null;
-  staker.delegationChangeCount = staker.delegationChangeCount.plus(
-    BigInt.fromI32(1)
-  );
-  staker.lastActivityAt = event.block.timestamp;
-
-  // Update operator counters
-  operator.delegatorCount = operator.delegatorCount.minus(BigInt.fromI32(1));
-  operator.lastActivityAt = event.block.timestamp;
-  operator.updatedAt = event.block.timestamp;
-
-  // Create delegation relationship entity
-  let delegationId =
-    staker.id + "-" + operator.id + "-" + event.block.timestamp.toString();
-  let delegation = new StakerDelegation(delegationId);
-  delegation.staker = staker.id;
-  delegation.operator = operator.id;
-  delegation.delegationType = "FORCE_UNDELEGATED";
-  delegation.transactionHash = event.transaction.hash;
-  delegation.blockNumber = event.block.number;
-  delegation.blockTimestamp = event.block.timestamp;
-  delegation.logIndex = event.logIndex;
-
-  // Create delegation event
-  let delegationEvent = new StakerDelegationEvent(
+  // Create pure event entity (specific type for force undelegation)
+  let forceUndelegationEvent = new StakerForceUndelegatedEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
+  forceUndelegationEvent.transactionHash = event.transaction.hash;
+  forceUndelegationEvent.logIndex = event.logIndex;
+  forceUndelegationEvent.blockNumber = event.block.number;
+  forceUndelegationEvent.blockTimestamp = event.block.timestamp;
+  forceUndelegationEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  forceUndelegationEvent.staker = staker.id;
+  forceUndelegationEvent.operator = operator.id;
+
+  // Also create delegation event for consistency
+  let delegationEvent = new StakerDelegationEvent(
+    event.transaction.hash.toHexString() +
+      "-" +
+      event.logIndex.toString() +
+      "-delegation"
+  );
+
   delegationEvent.transactionHash = event.transaction.hash;
   delegationEvent.logIndex = event.logIndex;
   delegationEvent.blockNumber = event.block.number;
@@ -323,60 +281,45 @@ export function handleStakerForceUndelegated(
   // Save entities
   staker.save();
   operator.save();
-  delegation.save();
+  forceUndelegationEvent.save();
   delegationEvent.save();
+  incrementEventCounter("StakerForceUndelegatedEntity", event.block.number, event.block.timestamp);
+  incrementEventCounter("StakerDelegationEvent", event.block.number, event.block.timestamp);
 
-  log.info("StakerForceUndelegated processed successfully", []);
+  log.info("StakerForceUndelegated event saved: {}", [
+    forceUndelegationEvent.id,
+  ]);
 }
 
 // ========================================
-// SHARE TRACKING EVENTS (CRITICAL FOR RISK)
+// SHARE TRACKING EVENTS
 // ========================================
 
 export function handleOperatorSharesIncreased(
   event: OperatorSharesIncreased
 ): void {
-  log.info(
-    "Processing OperatorSharesIncreased: operator {} staker {} strategy {} shares {}",
-    [
-      event.params.operator.toHexString(),
-      event.params.staker.toHexString(),
-      event.params.strategy.toHexString(),
-      event.params.shares.toString(),
-    ]
-  );
+  log.info("Processing OperatorSharesIncreased event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
 
-  // Load entities
-  let operator = getOrCreateOperatorDefensive(
-    event.params.operator,
-    event.block.timestamp
-  );
-  let staker = getOrCreateStaker(event.params.staker, event.block.timestamp);
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
-  );
+  // Create minimal lookup entities if needed
+  let operator = getOrCreateOperator(event.params.operator);
+  let staker = getOrCreateStaker(event.params.staker);
+  let strategy = getOrCreateStrategy(event.params.strategy);
 
-  // Update strategy counters
-  strategy.totalShares = strategy.totalShares.plus(event.params.shares);
-  strategy.lastActivityAt = event.block.timestamp;
-
-  // Update operator activity
-  operator.lastActivityAt = event.block.timestamp;
-  operator.updatedAt = event.block.timestamp;
-
-  // Update staker activity
-  staker.lastActivityAt = event.block.timestamp;
-
-  // Create share event
+  // Create pure event entity
   let shareEvent = new OperatorShareEvent(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   shareEvent.transactionHash = event.transaction.hash;
   shareEvent.logIndex = event.logIndex;
   shareEvent.blockNumber = event.block.number;
   shareEvent.blockTimestamp = event.block.timestamp;
   shareEvent.contractAddress = event.address;
+
+  // Event-specific fields
   shareEvent.operator = operator.id;
   shareEvent.staker = staker.id;
   shareEvent.strategy = strategy.id;
@@ -388,54 +331,55 @@ export function handleOperatorSharesIncreased(
   staker.save();
   strategy.save();
   shareEvent.save();
+  incrementEventCounter("OperatorShareEvent", event.block.number, event.block.timestamp);
 
-  log.info("OperatorSharesIncreased processed successfully", []);
+  // Update running totals
+  let operatorStrategyShareId = operator.id + "-" + strategy.id;
+  let operatorStrategyShare = OperatorStrategyShare.load(
+    operatorStrategyShareId
+  );
+  if (operatorStrategyShare == null) {
+    operatorStrategyShare = new OperatorStrategyShare(operatorStrategyShareId);
+    operatorStrategyShare.operator = operator.id;
+    operatorStrategyShare.strategy = strategy.id;
+    operatorStrategyShare.totalShares = BigInt.fromI32(0);
+  }
+  operatorStrategyShare.totalShares = operatorStrategyShare.totalShares.plus(
+    event.params.shares
+  );
+  operatorStrategyShare.lastUpdatedBlock = event.block.number;
+  operatorStrategyShare.lastUpdatedTimestamp = event.block.timestamp;
+  operatorStrategyShare.lastUpdatedTxHash = event.transaction.hash;
+  operatorStrategyShare.save();
+
+  log.info("OperatorSharesIncreased event saved: {}", [shareEvent.id]);
 }
 
 export function handleOperatorSharesDecreased(
   event: OperatorSharesDecreased
 ): void {
-  log.info(
-    "Processing OperatorSharesDecreased: operator {} staker {} strategy {} shares {}",
-    [
-      event.params.operator.toHexString(),
-      event.params.staker.toHexString(),
-      event.params.strategy.toHexString(),
-      event.params.shares.toString(),
-    ]
-  );
+  log.info("Processing OperatorSharesDecreased event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
 
-  // Load entities
-  let operator = getOrCreateOperatorDefensive(
-    event.params.operator,
-    event.block.timestamp
-  );
-  let staker = getOrCreateStaker(event.params.staker, event.block.timestamp);
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
-  );
+  // Create minimal lookup entities if needed
+  let operator = getOrCreateOperator(event.params.operator);
+  let staker = getOrCreateStaker(event.params.staker);
+  let strategy = getOrCreateStrategy(event.params.strategy);
 
-  // Update strategy counters
-  strategy.totalShares = strategy.totalShares.minus(event.params.shares);
-  strategy.lastActivityAt = event.block.timestamp;
-
-  // Update operator activity
-  operator.lastActivityAt = event.block.timestamp;
-  operator.updatedAt = event.block.timestamp;
-
-  // Update staker activity
-  staker.lastActivityAt = event.block.timestamp;
-
-  // Create share event
+  // Create pure event entity
   let shareEvent = new OperatorShareEvent(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   shareEvent.transactionHash = event.transaction.hash;
   shareEvent.logIndex = event.logIndex;
   shareEvent.blockNumber = event.block.number;
   shareEvent.blockTimestamp = event.block.timestamp;
   shareEvent.contractAddress = event.address;
+
+  // Event-specific fields
   shareEvent.operator = operator.id;
   shareEvent.staker = staker.id;
   shareEvent.strategy = strategy.id;
@@ -447,48 +391,90 @@ export function handleOperatorSharesDecreased(
   staker.save();
   strategy.save();
   shareEvent.save();
+  incrementEventCounter("OperatorShareEvent", event.block.number, event.block.timestamp);
 
-  log.info("OperatorSharesDecreased processed successfully", []);
+  // Update running totals
+  let operatorStrategyShareId = operator.id + "-" + strategy.id;
+  let operatorStrategyShare = OperatorStrategyShare.load(
+    operatorStrategyShareId
+  );
+  if (operatorStrategyShare == null) {
+    operatorStrategyShare = new OperatorStrategyShare(operatorStrategyShareId);
+    operatorStrategyShare.operator = operator.id;
+    operatorStrategyShare.strategy = strategy.id;
+    operatorStrategyShare.totalShares = BigInt.fromI32(0);
+  }
+  operatorStrategyShare.totalShares = operatorStrategyShare.totalShares.minus(
+    event.params.shares
+  );
+  operatorStrategyShare.lastUpdatedBlock = event.block.number;
+  operatorStrategyShare.lastUpdatedTimestamp = event.block.timestamp;
+  operatorStrategyShare.lastUpdatedTxHash = event.transaction.hash;
+  operatorStrategyShare.save();
+
+  log.info("OperatorSharesDecreased event saved: {}", [shareEvent.id]);
 }
 
 export function handleOperatorSharesSlashed(
   event: OperatorSharesSlashed
 ): void {
-  log.info(
-    "CRITICAL: OperatorSharesSlashed - operator {} strategy {} totalSlashedShares {}",
-    [
-      event.params.operator.toHexString(),
-      event.params.strategy.toHexString(),
-      event.params.totalSlashedShares.toString(),
-    ]
+  log.info("Processing OperatorSharesSlashed event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
+
+  // Create minimal lookup entities if needed
+  let operator = getOrCreateOperator(event.params.operator);
+  let strategy = getOrCreateStrategy(event.params.strategy);
+
+  // Create pure event entity (specific type for slashing)
+  let slashingEvent = new OperatorSharesSlashedEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
 
-  // Load entities
-  let operator = getOrCreateOperatorDefensive(
-    event.params.operator,
-    event.block.timestamp
-  );
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
-  );
+  // Base event fields
+  slashingEvent.transactionHash = event.transaction.hash;
+  slashingEvent.logIndex = event.logIndex;
+  slashingEvent.blockNumber = event.block.number;
+  slashingEvent.blockTimestamp = event.block.timestamp;
+  slashingEvent.contractAddress = event.address;
 
-  // Update operator slashing counter - CRITICAL FOR RISK ASSESSMENT
-  operator.slashingEventCount = operator.slashingEventCount.plus(
-    BigInt.fromI32(1)
-  );
-  operator.lastActivityAt = event.block.timestamp;
-  operator.updatedAt = event.block.timestamp;
+  // Event-specific fields
+  slashingEvent.operator = operator.id;
+  slashingEvent.strategy = strategy.id;
+  slashingEvent.totalSlashedShares = event.params.totalSlashedShares;
 
-  // Update strategy
-  strategy.totalShares = strategy.totalShares.minus(
+  // Save entities
+  operator.save();
+  strategy.save();
+  slashingEvent.save();
+  incrementEventCounter("OperatorSharesSlashedEntity", event.block.number, event.block.timestamp);
+
+  // Update running totals
+  let operatorStrategyShareId = operator.id + "-" + strategy.id;
+  let operatorStrategyShare = OperatorStrategyShare.load(
+    operatorStrategyShareId
+  );
+  if (operatorStrategyShare == null) {
+    // Should exist if slashed, but handle gracefully
+    operatorStrategyShare = new OperatorStrategyShare(operatorStrategyShareId);
+    operatorStrategyShare.operator = operator.id;
+    operatorStrategyShare.strategy = strategy.id;
+    operatorStrategyShare.totalShares = BigInt.fromI32(0);
+  }
+  operatorStrategyShare.totalShares = operatorStrategyShare.totalShares.minus(
     event.params.totalSlashedShares
   );
-  strategy.lastActivityAt = event.block.timestamp;
+  operatorStrategyShare.lastUpdatedBlock = event.block.number;
+  operatorStrategyShare.lastUpdatedTimestamp = event.block.timestamp;
+  operatorStrategyShare.lastUpdatedTxHash = event.transaction.hash;
+  operatorStrategyShare.save();
 
-  // Create share event for slashing
+  // Create unified OperatorShareEvent for history
   let shareEvent = new OperatorShareEvent(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() +
+      "-" +
+      event.logIndex.toString() +
+      "-slashed"
   );
   shareEvent.transactionHash = event.transaction.hash;
   shareEvent.logIndex = event.logIndex;
@@ -496,23 +482,14 @@ export function handleOperatorSharesSlashed(
   shareEvent.blockTimestamp = event.block.timestamp;
   shareEvent.contractAddress = event.address;
   shareEvent.operator = operator.id;
-  shareEvent.staker = "SLASHED"; // Special marker for slashing events
+  shareEvent.staker = "SLASHED"; // No specific staker for total slashed
   shareEvent.strategy = strategy.id;
-  shareEvent.shares = event.params.totalSlashedShares;
-  shareEvent.eventType = "DECREASED"; // Slashing is a special type of decrease
-
-  // Save entities
-  operator.save();
-  strategy.save();
+  shareEvent.shares = event.params.totalSlashedShares; // Positive value, eventType implies direction
+  shareEvent.eventType = "SLASHED";
   shareEvent.save();
+  incrementEventCounter("OperatorShareEvent", event.block.number, event.block.timestamp);
 
-  log.info(
-    "CRITICAL: OperatorSharesSlashed processed - operator {} totalSlashedShares {} shares",
-    [
-      event.params.operator.toHexString(),
-      event.params.totalSlashedShares.toString(),
-    ]
-  );
+  log.info("OperatorSharesSlashed event saved: {}", [slashingEvent.id]);
 }
 
 // ========================================
@@ -522,38 +499,46 @@ export function handleOperatorSharesSlashed(
 export function handleSlashingWithdrawalQueued(
   event: SlashingWithdrawalQueued
 ): void {
-  log.info("Processing SlashingWithdrawalQueued: root {}", [
-    event.params.withdrawalRoot.toHexString(),
+  log.info("Processing SlashingWithdrawalQueued event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
   // Extract withdrawal struct data
   let withdrawal = event.params.withdrawal;
   let sharesToWithdraw = event.params.sharesToWithdraw;
 
-  // Load staker
-  let staker = getOrCreateStaker(withdrawal.staker, event.block.timestamp);
-  staker.withdrawalCount = staker.withdrawalCount.plus(BigInt.fromI32(1));
-  staker.lastActivityAt = event.block.timestamp;
-
-  // Load operator if delegated
-  let operator: Operator | null = null;
-  if (withdrawal.delegatedTo.notEqual(Address.zero())) {
-    operator = Operator.load(withdrawal.delegatedTo.toHexString());
-    if (operator != null) {
-      operator.lastActivityAt = event.block.timestamp;
-      operator.updatedAt = event.block.timestamp;
-    }
+  // DATA QUALITY GUARD: Strategies and shares arrays must match in length
+  if (withdrawal.strategies.length != sharesToWithdraw.length) {
+    log.critical(
+      "INVARIANT VIOLATION: Strategy/shares array mismatch ({} vs {}) at tx {}",
+      [
+        withdrawal.strategies.length.toString(),
+        sharesToWithdraw.length.toString(),
+        event.transaction.hash.toHexString(),
+      ]
+    );
   }
 
-  // Create withdrawal event
+  // Create minimal lookup entities if needed
+  let staker = getOrCreateStaker(withdrawal.staker);
+  let operator: Operator | null = null;
+  if (withdrawal.delegatedTo.notEqual(Address.zero())) {
+    operator = getOrCreateOperator(withdrawal.delegatedTo);
+  }
+
+  // Create pure event entity
   let withdrawalEvent = new WithdrawalEvent(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   withdrawalEvent.transactionHash = event.transaction.hash;
   withdrawalEvent.logIndex = event.logIndex;
   withdrawalEvent.blockNumber = event.block.number;
   withdrawalEvent.blockTimestamp = event.block.timestamp;
   withdrawalEvent.contractAddress = event.address;
+
+  // Event-specific fields
   withdrawalEvent.withdrawalRoot = event.params.withdrawalRoot;
   withdrawalEvent.staker = staker.id;
   withdrawalEvent.delegatedTo = operator != null ? operator.id : null;
@@ -565,6 +550,7 @@ export function handleSlashingWithdrawalQueued(
   );
   withdrawalEvent.shares = sharesToWithdraw;
   withdrawalEvent.eventType = "QUEUED";
+  withdrawalEvent.isComplete = true;
 
   // Save entities
   staker.save();
@@ -572,26 +558,31 @@ export function handleSlashingWithdrawalQueued(
     operator.save();
   }
   withdrawalEvent.save();
+  incrementEventCounter("WithdrawalEvent", event.block.number, event.block.timestamp);
 
-  log.info("SlashingWithdrawalQueued processed successfully", []);
+  log.info("SlashingWithdrawalQueued event saved: {}", [withdrawalEvent.id]);
 }
 
 export function handleSlashingWithdrawalCompleted(
   event: SlashingWithdrawalCompleted
 ): void {
-  log.info("Processing SlashingWithdrawalCompleted: root {}", [
-    event.params.withdrawalRoot.toHexString(),
+  log.info("Processing SlashingWithdrawalCompleted event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Create completion event
+  // Create pure event entity (minimal data since only root is provided)
   let withdrawalEvent = new WithdrawalEvent(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   withdrawalEvent.transactionHash = event.transaction.hash;
   withdrawalEvent.logIndex = event.logIndex;
   withdrawalEvent.blockNumber = event.block.number;
   withdrawalEvent.blockTimestamp = event.block.timestamp;
   withdrawalEvent.contractAddress = event.address;
+
+  // Event-specific fields (minimal for completion event)
   withdrawalEvent.withdrawalRoot = event.params.withdrawalRoot;
   withdrawalEvent.staker = "UNKNOWN"; // Root only, no direct staker reference
   withdrawalEvent.delegatedTo = null;
@@ -601,147 +592,87 @@ export function handleSlashingWithdrawalCompleted(
   withdrawalEvent.strategies = [];
   withdrawalEvent.shares = [];
   withdrawalEvent.eventType = "COMPLETED";
+  withdrawalEvent.isComplete = false;
 
-  withdrawalEvent.save();
-
-  log.info("SlashingWithdrawalCompleted processed successfully", []);
-}
-
-// ========================================
-// ADMINISTRATIVE EVENTS
-// ========================================
-
-export function handleDelegationApproverUpdated(
-  event: DelegationApproverUpdated
-): void {
-  log.info("Processing DelegationApproverUpdated: operator {} approver {}", [
-    event.params.operator.toHexString(),
-    event.params.newDelegationApprover.toHexString(),
-  ]);
-
-  let operator = getOrCreateOperatorDefensive(
-    event.params.operator,
-    event.block.timestamp
+  log.warning(
+    "SlashingWithdrawalCompleted event {} has incomplete data - only withdrawalRoot available",
+    [withdrawalEvent.id]
   );
 
-  operator.delegationApprover = event.params.newDelegationApprover;
-  operator.lastActivityAt = event.block.timestamp;
-  operator.updatedAt = event.block.timestamp;
+  withdrawalEvent.save();
+  incrementEventCounter("WithdrawalEvent", event.block.number, event.block.timestamp);
 
-  operator.save();
-
-  log.info("DelegationApproverUpdated processed successfully", []);
+  log.info("SlashingWithdrawalCompleted event saved: {}", [withdrawalEvent.id]);
 }
 
-// TODO: Review this function
+// ========================================
+// ADDITIONAL EVENTS
+// ========================================
+
 export function handleDepositScalingFactorUpdated(
   event: DepositScalingFactorUpdated
 ): void {
-  log.info(
-    "Processing DepositScalingFactorUpdated: strategy {} staker {} factor {}",
-    [
-      event.params.strategy.toHexString(),
-      event.params.staker.toHexString(),
-      event.params.newDepositScalingFactor.toString(),
-    ]
+  log.info("Processing DepositScalingFactorUpdated event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
+
+  // Create minimal lookup entities if needed
+  let staker = getOrCreateStaker(event.params.staker);
+  let strategy = getOrCreateStrategy(event.params.strategy);
+
+  // Create pure event entity
+  let scalingEvent = new DepositScalingFactorUpdatedEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
 
-  // This is primarily a technical event for share calculations
-  // We'll track it but it doesn't significantly impact risk scoring
+  // Base event fields
+  scalingEvent.transactionHash = event.transaction.hash;
+  scalingEvent.logIndex = event.logIndex;
+  scalingEvent.blockNumber = event.block.number;
+  scalingEvent.blockTimestamp = event.block.timestamp;
+  scalingEvent.contractAddress = event.address;
 
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
-  );
-  strategy.lastActivityAt = event.block.timestamp;
+  // Event-specific fields
+  scalingEvent.staker = staker.id;
+  scalingEvent.strategy = strategy.id;
+  scalingEvent.newDepositScalingFactor = event.params.newDepositScalingFactor;
 
-  let staker = getOrCreateStaker(event.params.staker, event.block.timestamp);
-  staker.lastActivityAt = event.block.timestamp;
-
-  strategy.save();
+  // Save entities
   staker.save();
+  strategy.save();
+  scalingEvent.save();
+  incrementEventCounter("DepositScalingFactorUpdatedEntity", event.block.number, event.block.timestamp);
 
-  log.info("DepositScalingFactorUpdated processed successfully", []);
+  log.info("DepositScalingFactorUpdated event saved: {}", [scalingEvent.id]);
 }
 
 // ========================================
-// HELPER FUNCTIONS
+// MINIMAL HELPER FUNCTIONS
 // ========================================
 
-function getOrCreateStaker(address: Address, timestamp: BigInt): Staker {
+function getOrCreateOperator(address: Address): Operator {
+  let operator = Operator.load(address.toHexString());
+  if (operator == null) {
+    operator = new Operator(address.toHexString());
+    operator.address = address;
+  }
+  return operator;
+}
+
+function getOrCreateStaker(address: Address): Staker {
   let staker = Staker.load(address.toHexString());
   if (staker == null) {
     staker = new Staker(address.toHexString());
     staker.address = address;
-    staker.delegatedOperator = null;
-    staker.delegatedAt = null;
-
-    // Initialize counters
-    staker.totalStrategies = BigInt.fromI32(0);
-    staker.delegationChangeCount = BigInt.fromI32(0);
-    staker.withdrawalCount = BigInt.fromI32(0);
-
-    // Set timestamps
-    staker.firstActivityAt = timestamp;
-    staker.lastActivityAt = timestamp;
   }
   return staker;
 }
 
-function getOrCreateStrategy(address: Address, timestamp: BigInt): Strategy {
+function getOrCreateStrategy(address: Address): Strategy {
   let strategy = Strategy.load(address.toHexString());
   if (strategy == null) {
     strategy = new Strategy(address.toHexString());
     strategy.address = address;
-
-    // Initialize counters
-    strategy.totalDeposits = BigInt.fromI32(0);
-    strategy.totalShares = BigInt.fromI32(0);
-    strategy.operatorCount = BigInt.fromI32(0);
-
-    // Initialize status
-    strategy.isWhitelisted = true; // Assume whitelisted until proven otherwise
-    strategy.whitelistedAt = null;
-
-    // Set timestamps
-    strategy.firstDepositAt = null;
-    strategy.lastActivityAt = timestamp;
   }
   return strategy;
-}
-
-function getOrCreateOperatorDefensive(
-  address: Address,
-  timestamp: BigInt
-): Operator {
-  let operator = Operator.load(address.toHexString());
-  if (operator == null) {
-    log.warning("Creating missing operator entity: {}", [
-      address.toHexString(),
-    ]);
-    operator = new Operator(address.toHexString());
-    operator.address = address;
-    operator.delegationApprover = null;
-    operator.metadataURI = null;
-
-    // Initialize counters
-    operator.delegatorCount = BigInt.fromI32(0);
-    operator.avsRegistrationCount = BigInt.fromI32(0);
-    operator.operatorSetCount = BigInt.fromI32(0);
-    operator.slashingEventCount = BigInt.fromI32(0);
-
-    // Set nullable registration info
-    operator.registeredAt = null;
-    operator.registeredAtBlock = null;
-    operator.registeredAtTransaction = null;
-    operator.registrationEvent = null;
-    operator.isRegistered = false;
-
-    // Set activity timestamps
-    operator.lastActivityAt = timestamp;
-    operator.updatedAt = timestamp;
-
-    operator.save();
-  }
-  return operator;
 }

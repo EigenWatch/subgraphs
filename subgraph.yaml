@@ -19,15 +19,20 @@ dataSources:
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
+        # Minimal lookup entities
         - Operator
         - Staker
         - Strategy
+        # Event entities only
         - OperatorRegistered
+        - DelegationApproverUpdated
         - OperatorMetadataUpdate
         - OperatorShareEvent
-        - StakerDelegation
         - StakerDelegationEvent
+        - StakerForceUndelegated
+        - DepositScalingFactorUpdated
         - WithdrawalEvent
+        - OperatorSharesSlashed
       abis:
         - name: DelegationManager
           file: ./abis/DelegationManager.json
@@ -37,6 +42,8 @@ dataSources:
           handler: handleOperatorRegistered
         - event: OperatorMetadataURIUpdated(indexed address,string)
           handler: handleOperatorMetadataURIUpdated
+        - event: DelegationApproverUpdated(indexed address,address)
+          handler: handleDelegationApproverUpdated
 
         # Delegation relationships
         - event: StakerDelegated(indexed address,indexed address)
@@ -60,9 +67,7 @@ dataSources:
         - event: SlashingWithdrawalCompleted(bytes32)
           handler: handleSlashingWithdrawalCompleted
 
-        # Admin events (lower priority)
-        - event: DelegationApproverUpdated(indexed address,address)
-          handler: handleDelegationApproverUpdated
+        # Additional tracking
         - event: DepositScalingFactorUpdated(address,address,uint256)
           handler: handleDepositScalingFactorUpdated
       file: ./src/delegation-manager.ts
@@ -82,17 +87,23 @@ dataSources:
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
+        # Minimal lookup entities
         - Operator
         - AVS
         - OperatorSet
         - Strategy
-        - OperatorSlashed
+        # Event entities only
+        - AllocationDelaySet
         - AllocationEvent
+        - EncumberedMagnitudeUpdated
+        - MaxMagnitudeUpdated
+        - OperatorSlashed
+        - AVSRegistrarSet
+        - AVSMetadataUpdate
         - OperatorSetCreated
-        - OperatorSetMembership
         - OperatorAddedToOperatorSet
         - OperatorRemovedFromOperatorSet
-        - AVSMetadataUpdate
+        - RedistributionAddressSet
         - StrategyOperatorSetEvent
       abis:
         - name: AllocationManager
@@ -152,12 +163,24 @@ dataSources:
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
+        # Minimal lookup entities
         - Operator
         - AVS
         - OperatorSet
+        # Event entities only
         - RewardsSubmission
-        - OperatorCommissionEvent
-        - DistributionRootEvent
+        - OperatorDirectedAVSRewardsSubmission
+        - OperatorDirectedOperatorSetRewardsSubmission
+        - RewardsUpdaterSet
+        - RewardsForAllSubmitterSet
+        - ActivationDelaySet
+        - DefaultOperatorSplitBipsSet
+        - OperatorAVSSplitBipsSet
+        - OperatorPISplitBipsSet
+        - OperatorSetSplitBipsSet
+        - ClaimerForSet
+        - DistributionRootSubmitted
+        - DistributionRootDisabled
         - RewardsClaimed
       abis:
         - name: RewardsCoordinator
@@ -196,6 +219,12 @@ dataSources:
           handler: handleActivationDelaySet
         - event: DefaultOperatorSplitBipsSet(uint16,uint16)
           handler: handleDefaultOperatorSplitBipsSet
+        - event: RewardsUpdaterSet(indexed address,indexed address)
+          handler: handleRewardsUpdaterSet
+        - event: RewardsForAllSubmitterSet(indexed address,indexed bool,indexed bool)
+          handler: handleRewardsForAllSubmitterSet
+        - event: ClaimerForSet(indexed address,indexed address,indexed address)
+          handler: handleClaimerForSet
       file: ./src/rewards-coordinator.ts
 
   # ========================================
@@ -213,10 +242,17 @@ dataSources:
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
+        # Minimal lookup entities
         - Staker
         - Strategy
+        - OperatorSet
+        # Event entities only
         - Deposit
+        - StrategyWhitelisterChanged
         - StrategyWhitelistEvent
+        - BurnOrRedistributableSharesIncreased
+        - BurnOrRedistributableSharesDecreased
+        - BurnableSharesDecreased
       abis:
         - name: StrategyManager
           file: ./abis/StrategyManager.json
@@ -230,6 +266,8 @@ dataSources:
           handler: handleStrategyAddedToDepositWhitelist
         - event: StrategyRemovedFromDepositWhitelist(address)
           handler: handleStrategyRemovedFromDepositWhitelist
+        - event: StrategyWhitelisterChanged(address,address)
+          handler: handleStrategyWhitelisterChanged
 
         # Slashing resolution (post-slashing share management)
         - event: BurnOrRedistributableSharesIncreased((address,uint32),uint256,address,uint256)
@@ -255,11 +293,11 @@ dataSources:
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
+        # Minimal lookup entities
         - Operator
         - AVS
-        - OperatorAVSRegistration
+        # Event entities only
         - OperatorAVSRegistrationStatusUpdated
-        - AVSMetadataUpdate
       abis:
         - name: AVSDirectory
           file: ./abis/AVSDirectory.json
@@ -268,9 +306,7 @@ dataSources:
         - event: OperatorAVSRegistrationStatusUpdated(indexed address,indexed address,uint8)
           handler: handleOperatorAVSRegistrationStatusUpdated
 
-        # AVS metadata updates (duplicate of AllocationManager event)
-        - event: AVSMetadataURIUpdated(indexed address,string)
-          handler: handleAVSMetadataURIUpdated
+        # Note: AVSMetadataURIUpdated is handled in AllocationManager to avoid duplicates
       file: ./src/avs-directory.ts
 
   # ========================================
@@ -288,13 +324,19 @@ dataSources:
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
+        # Minimal lookup entities
         - Staker
         - EigenPod
+        # Event entities only
         - PodDeployed
         - BeaconChainDeposit
         - PodSharesUpdate
         - BeaconChainWithdrawal
+        - BeaconChainETHWithdrawalCompleted
         - BeaconChainSlashingEvent
+        - BurnableETHSharesIncreased
+        - PectraForkTimestampSet
+        - ProofTimestampSetterSet
       abis:
         - name: EigenPodManager
           file: ./abis/EigenPodManager.json
@@ -324,7 +366,34 @@ dataSources:
         # Share burning (post-slashing resolution)
         - event: BurnableETHSharesIncreased(uint256)
           handler: handleBurnableETHSharesIncreased
+
+        # System configuration
+        - event: PectraForkTimestampSet(uint64)
+          handler: handlePectraForkTimestampSet
+        - event: ProofTimestampSetterSet(address)
+          handler: handleProofTimestampSetterSet
       file: ./src/eigen-pod-manager.ts
+templates:
+  - kind: ethereum/contract
+    name: Strategy
+    network: mainnet
+    source:
+      abi: Strategy
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/strategy.ts
+      entities:
+        - Strategy
+      abis:
+        - name: Strategy
+          file: ./abis/Strategy.json
+      eventHandlers:
+        - event: StrategyTokenSet(address,uint8)
+          handler: handleStrategyTokenSet
+        - event: ExchangeRateEmitted(uint256)
+          handler: handleExchangeRateEmitted
 # ========================================
 # CONTRACT ADDRESSES (Mainnet)
 # ========================================

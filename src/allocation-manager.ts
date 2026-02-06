@@ -15,90 +15,66 @@ import {
 } from "../generated/AllocationManager/AllocationManager";
 
 import {
+  // Minimal lookup entities
   Operator,
   AVS,
   OperatorSet,
   Strategy,
+  // Event entities
   OperatorSlashed as OperatorSlashedEntity,
+  AllocationDelaySet as AllocationDelaySetEntity,
   AllocationEvent,
+  EncumberedMagnitudeUpdated as EncumberedMagnitudeUpdatedEntity,
+  MaxMagnitudeUpdated as MaxMagnitudeUpdatedEntity,
   OperatorSetCreated as OperatorSetCreatedEntity,
-  OperatorSetMembership,
   OperatorAddedToOperatorSet as OperatorAddedEntity,
   OperatorRemovedFromOperatorSet as OperatorRemovedEntity,
+  RedistributionAddressSet as RedistributionAddressSetEntity,
+  AVSRegistrarSet as AVSRegistrarSetEntity,
   AVSMetadataUpdate,
   StrategyOperatorSetEvent,
 } from "../generated/schema";
 
-import { BigInt, log, Address } from "@graphprotocol/graph-ts";
+import { log, Address, BigInt } from "@graphprotocol/graph-ts";
+import { incrementEventCounter } from "./utils";
 
 // ========================================
-// CRITICAL SLASHING EVENTS (HIGHEST PRIORITY)
+// SLASHING EVENTS
 // ========================================
 
 export function handleOperatorSlashed(event: OperatorSlashed): void {
-  log.info("SLASHING EVENT: Operator {} slashed in set {}", [
-    event.params.operator.toHexString(),
-    event.params.operatorSet.id.toString(),
+  log.info("Processing OperatorSlashed event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load operator (should exist)
-  let operator = Operator.load(event.params.operator.toHexString());
-  if (operator == null) {
-    log.error("Critical: Operator not found for slashing event: {}", [
-      event.params.operator.toHexString(),
-    ]);
-    return;
+  // DATA QUALITY GUARD: Operator address must not be zero
+  if (event.params.operator.equals(Address.zero())) {
+    log.critical(
+      "INVARIANT VIOLATION: OperatorSlashed with zero operator at tx {}",
+      [event.transaction.hash.toHexString()]
+    );
   }
 
-  // Load operator set
-  let operatorSetId =
-    event.params.operatorSet.avs.toHexString() +
-    "-" +
-    event.params.operatorSet.id.toString();
-  let operatorSet = OperatorSet.load(operatorSetId);
-  if (operatorSet == null) {
-    log.error("Critical: OperatorSet not found for slashing: {}", [
-      operatorSetId,
-    ]);
-    return;
-  }
-
-  // Load AVS
-  let avs = AVS.load(event.params.operatorSet.avs.toHexString());
-  if (avs == null) {
-    log.error("Critical: AVS not found for slashing: {}", [
-      event.params.operatorSet.avs.toHexString(),
-    ]);
-    return;
-  }
-
-  // Update operator slashing counter - CRITICAL FOR RISK ASSESSMENT
-  operator.slashingEventCount = operator.slashingEventCount.plus(
-    BigInt.fromI32(1)
+  // Create minimal lookup entities if needed
+  let operator = getOrCreateOperator(event.params.operator);
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id
   );
-  operator.lastActivityAt = event.block.timestamp;
-  operator.updatedAt = event.block.timestamp;
 
-  // Update operator set slashing counter
-  operatorSet.slashingEventCount = operatorSet.slashingEventCount.plus(
-    BigInt.fromI32(1)
-  );
-  operatorSet.lastActivityAt = event.block.timestamp;
-
-  // Update AVS slashing counter
-  avs.slashingEventCount = avs.slashingEventCount.plus(BigInt.fromI32(1));
-  avs.lastActivityAt = event.block.timestamp;
-  avs.updatedAt = event.block.timestamp;
-
-  // Create slashing event entity
+  // Create pure event entity with complete data
   let slashingEvent = new OperatorSlashedEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields (inherited from BaseEvent interface)
   slashingEvent.transactionHash = event.transaction.hash;
   slashingEvent.logIndex = event.logIndex;
   slashingEvent.blockNumber = event.block.number;
   slashingEvent.blockTimestamp = event.block.timestamp;
   slashingEvent.contractAddress = event.address;
+
+  // Event-specific fields
   slashingEvent.operator = operator.id;
   slashingEvent.operatorSet = operatorSet.id;
   slashingEvent.strategies = event.params.strategies.map<string>(
@@ -107,74 +83,45 @@ export function handleOperatorSlashed(event: OperatorSlashed): void {
   slashingEvent.wadSlashed = event.params.wadSlashed;
   slashingEvent.description = event.params.description;
 
-  // Save all entities
+  // Save entities
   operator.save();
   operatorSet.save();
-  avs.save();
   slashingEvent.save();
+  incrementEventCounter("OperatorSlashedEntity", event.block.number, event.block.timestamp);
 
-  log.info("SLASHING PROCESSED: Operator {} lost {} in strategies {}", [
-    operator.id,
-    event.params.wadSlashed.toString(),
-    event.params.strategies.toString(),
-  ]);
+  log.info("OperatorSlashed event saved: {}", [slashingEvent.id]);
 }
 
 // ========================================
-// ALLOCATION BEHAVIOR TRACKING (IMPORTANT FOR RISK)
+// ALLOCATION EVENTS
 // ========================================
 
 export function handleAllocationUpdated(event: AllocationUpdated): void {
-  log.info("Processing AllocationUpdated: operator {} set {} magnitude {}", [
-    event.params.operator.toHexString(),
-    event.params.operatorSet.id.toString(),
-    event.params.magnitude.toString(),
+  log.info("Processing AllocationUpdated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load operator
-  let operator = Operator.load(event.params.operator.toHexString());
-  if (operator == null) {
-    log.warning("Operator not found for allocation update: {}", [
-      event.params.operator.toHexString(),
-    ]);
-    return;
-  }
-
-  // Load operator set
-  let operatorSetId =
-    event.params.operatorSet.avs.toHexString() +
-    "-" +
-    event.params.operatorSet.id.toString();
-  let operatorSet = OperatorSet.load(operatorSetId);
-  if (operatorSet == null) {
-    log.warning("OperatorSet not found for allocation: {}", [operatorSetId]);
-    return;
-  }
-
-  // Load strategy
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
+  // Create minimal lookup entities if needed
+  let operator = getOrCreateOperator(event.params.operator);
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id
   );
+  let strategy = getOrCreateStrategy(event.params.strategy);
 
-  // Update counters
-  operator.lastActivityAt = event.block.timestamp;
-  operator.updatedAt = event.block.timestamp;
-  operatorSet.allocationCount = operatorSet.allocationCount.plus(
-    BigInt.fromI32(1)
-  );
-  operatorSet.lastActivityAt = event.block.timestamp;
-  strategy.lastActivityAt = event.block.timestamp;
-
-  // Create allocation event
+  // Create pure event entity
   let allocationEvent = new AllocationEvent(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   allocationEvent.transactionHash = event.transaction.hash;
   allocationEvent.logIndex = event.logIndex;
   allocationEvent.blockNumber = event.block.number;
   allocationEvent.blockTimestamp = event.block.timestamp;
   allocationEvent.contractAddress = event.address;
+
+  // Event-specific fields
   allocationEvent.operator = operator.id;
   allocationEvent.operatorSet = operatorSet.id;
   allocationEvent.strategy = strategy.id;
@@ -186,255 +133,224 @@ export function handleAllocationUpdated(event: AllocationUpdated): void {
   operatorSet.save();
   strategy.save();
   allocationEvent.save();
+  incrementEventCounter("AllocationEvent", event.block.number, event.block.timestamp);
 
-  log.info("AllocationUpdated processed successfully", []);
+  log.info("AllocationUpdated event saved: {}", [allocationEvent.id]);
 }
 
-// TODO: Look into this, how useful is it?
 export function handleAllocationDelaySet(event: AllocationDelaySet): void {
-  log.info("Processing AllocationDelaySet: operator {} delay {}", [
-    event.params.operator.toHexString(),
-    event.params.delay.toString(),
+  log.info("Processing AllocationDelaySet event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  let operator = Operator.load(event.params.operator.toHexString());
-  if (operator != null) {
-    operator.lastActivityAt = event.block.timestamp;
-    operator.updatedAt = event.block.timestamp;
-    operator.save();
-  }
+  // Create minimal lookup entity if needed
+  let operator = getOrCreateOperator(event.params.operator);
+
+  // Create pure event entity
+  let delayEvent = new AllocationDelaySetEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  );
+
+  // Base event fields
+  delayEvent.transactionHash = event.transaction.hash;
+  delayEvent.logIndex = event.logIndex;
+  delayEvent.blockNumber = event.block.number;
+  delayEvent.blockTimestamp = event.block.timestamp;
+  delayEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  delayEvent.operator = operator.id;
+  delayEvent.delay = event.params.delay;
+  delayEvent.effectBlock = event.params.effectBlock;
+
+  // Save entities
+  operator.save();
+  delayEvent.save();
+  incrementEventCounter("AllocationDelaySetEntity", event.block.number, event.block.timestamp);
+
+  log.info("AllocationDelaySet event saved: {}", [delayEvent.id]);
 }
 
-// TODO: Look into this, how useful is it?
 export function handleEncumberedMagnitudeUpdated(
   event: EncumberedMagnitudeUpdated
 ): void {
-  log.info("Processing EncumberedMagnitudeUpdated: operator {} strategy {}", [
-    event.params.operator.toHexString(),
-    event.params.strategy.toHexString(),
+  log.info("Processing EncumberedMagnitudeUpdated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  let operator = Operator.load(event.params.operator.toHexString());
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
+  // Create minimal lookup entities if needed
+  let operator = getOrCreateOperator(event.params.operator);
+  let strategy = getOrCreateStrategy(event.params.strategy);
+
+  // Create pure event entity
+  let magnitudeEvent = new EncumberedMagnitudeUpdatedEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
 
-  if (operator != null) {
-    operator.lastActivityAt = event.block.timestamp;
-    operator.updatedAt = event.block.timestamp;
-    operator.save();
-  }
+  // Base event fields
+  magnitudeEvent.transactionHash = event.transaction.hash;
+  magnitudeEvent.logIndex = event.logIndex;
+  magnitudeEvent.blockNumber = event.block.number;
+  magnitudeEvent.blockTimestamp = event.block.timestamp;
+  magnitudeEvent.contractAddress = event.address;
 
-  strategy.lastActivityAt = event.block.timestamp;
+  // Event-specific fields
+  magnitudeEvent.operator = operator.id;
+  magnitudeEvent.strategy = strategy.id;
+  magnitudeEvent.encumberedMagnitude = event.params.encumberedMagnitude;
+
+  // Save entities
+  operator.save();
   strategy.save();
+  magnitudeEvent.save();
+  incrementEventCounter("EncumberedMagnitudeUpdatedEntity", event.block.number, event.block.timestamp);
+
+  log.info("EncumberedMagnitudeUpdated event saved: {}", [magnitudeEvent.id]);
 }
 
-// TODO: Look into this, how useful is it?
 export function handleMaxMagnitudeUpdated(event: MaxMagnitudeUpdated): void {
-  log.info("Processing MaxMagnitudeUpdated: operator {} strategy {}", [
-    event.params.operator.toHexString(),
-    event.params.strategy.toHexString(),
+  log.info("Processing MaxMagnitudeUpdated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  let operator = Operator.load(event.params.operator.toHexString());
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
+  // Create minimal lookup entities if needed
+  let operator = getOrCreateOperator(event.params.operator);
+  let strategy = getOrCreateStrategy(event.params.strategy);
+
+  // Create pure event entity
+  let maxMagnitudeEvent = new MaxMagnitudeUpdatedEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
 
-  if (operator != null) {
-    operator.lastActivityAt = event.block.timestamp;
-    operator.updatedAt = event.block.timestamp;
-    operator.save();
-  }
+  // Base event fields
+  maxMagnitudeEvent.transactionHash = event.transaction.hash;
+  maxMagnitudeEvent.logIndex = event.logIndex;
+  maxMagnitudeEvent.blockNumber = event.block.number;
+  maxMagnitudeEvent.blockTimestamp = event.block.timestamp;
+  maxMagnitudeEvent.contractAddress = event.address;
 
-  strategy.lastActivityAt = event.block.timestamp;
+  // Event-specific fields
+  maxMagnitudeEvent.operator = operator.id;
+  maxMagnitudeEvent.strategy = strategy.id;
+  maxMagnitudeEvent.maxMagnitude = event.params.maxMagnitude;
+
+  // Save entities
+  operator.save();
   strategy.save();
+  maxMagnitudeEvent.save();
+  incrementEventCounter("MaxMagnitudeUpdatedEntity", event.block.number, event.block.timestamp);
+
+  log.info("MaxMagnitudeUpdated event saved: {}", [maxMagnitudeEvent.id]);
 }
 
 // ========================================
-// OPERATOR SET LIFECYCLE (CRITICAL FOR AVS TRACKING)
+// OPERATOR SET EVENTS
 // ========================================
 
 export function handleOperatorSetCreated(event: OperatorSetCreated): void {
-  log.info("Processing OperatorSetCreated: AVS {} set ID {}", [
-    event.params.operatorSet.avs.toHexString(),
-    event.params.operatorSet.id.toString(),
+  log.info("Processing OperatorSetCreated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Get or create AVS
-  let avs = getOrCreateAVS(event.params.operatorSet.avs, event.block.timestamp);
+  // Create minimal lookup entities if needed
+  let avs = getOrCreateAVS(event.params.operatorSet.avs);
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id
+  );
 
-  // Create operator set
-  let operatorSetId = avs.id + "-" + event.params.operatorSet.id.toString();
-  let operatorSet = new OperatorSet(operatorSetId);
-  operatorSet.avs = avs.id;
-  operatorSet.operatorSetId = event.params.operatorSet.id;
-  operatorSet.redistributionRecipient = null;
-
-  // Initialize counters
-  operatorSet.memberCount = BigInt.fromI32(0);
-  operatorSet.strategyCount = BigInt.fromI32(0);
-  operatorSet.allocationCount = BigInt.fromI32(0);
-  operatorSet.slashingEventCount = BigInt.fromI32(0);
-
-  // Set timestamps
-  operatorSet.createdAt = event.block.timestamp;
-  operatorSet.lastActivityAt = event.block.timestamp;
-
-  // Create creation event
+  // Create pure event entity
   let creationEvent = new OperatorSetCreatedEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   creationEvent.transactionHash = event.transaction.hash;
   creationEvent.logIndex = event.logIndex;
   creationEvent.blockNumber = event.block.number;
   creationEvent.blockTimestamp = event.block.timestamp;
   creationEvent.contractAddress = event.address;
+
+  // Event-specific fields
   creationEvent.operatorSet = operatorSet.id;
   creationEvent.avs = avs.id;
   creationEvent.operatorSetId = event.params.operatorSet.id;
-
-  // Link creation event to operator set
-  operatorSet.creationEvent = creationEvent.id;
-
-  // Update AVS counter
-  avs.operatorSetCount = avs.operatorSetCount.plus(BigInt.fromI32(1));
-  avs.lastActivityAt = event.block.timestamp;
-  avs.updatedAt = event.block.timestamp;
 
   // Save entities
   avs.save();
   operatorSet.save();
   creationEvent.save();
+  incrementEventCounter("OperatorSetCreatedEntity", event.block.number, event.block.timestamp);
 
-  log.info("OperatorSetCreated processed successfully", []);
+  log.info("OperatorSetCreated event saved: {}", [creationEvent.id]);
 }
 
 export function handleOperatorAddedToOperatorSet(
   event: OperatorAddedToOperatorSet
 ): void {
-  log.info("Processing OperatorAddedToOperatorSet: operator {} to set {}", [
-    event.params.operator.toHexString(),
-    event.params.operatorSet.id.toString(),
+  log.info("Processing OperatorAddedToOperatorSet event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  // Load entities
-  let operator = Operator.load(event.params.operator.toHexString());
-  if (operator == null) {
-    log.warning("Operator not found for set addition: {}", [
-      event.params.operator.toHexString(),
-    ]);
-    return;
-  }
+  // Create minimal lookup entities if needed
+  let operator = getOrCreateOperator(event.params.operator);
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id
+  );
 
-  let operatorSetId =
-    event.params.operatorSet.avs.toHexString() +
-    "-" +
-    event.params.operatorSet.id.toString();
-  let operatorSet = OperatorSet.load(operatorSetId);
-  if (operatorSet == null) {
-    log.warning("OperatorSet not found: {}", [operatorSetId]);
-    return;
-  }
-
-  // Update counters
-  operator.operatorSetCount = operator.operatorSetCount.plus(BigInt.fromI32(1));
-  operator.lastActivityAt = event.block.timestamp;
-  operator.updatedAt = event.block.timestamp;
-
-  operatorSet.memberCount = operatorSet.memberCount.plus(BigInt.fromI32(1));
-  operatorSet.lastActivityAt = event.block.timestamp;
-
-  // Create membership entity
-  let membershipId =
-    operator.id + "-" + operatorSet.id + "-" + event.block.timestamp.toString();
-  let membership = new OperatorSetMembership(membershipId);
-  membership.operator = operator.id;
-  membership.operatorSet = operatorSet.id;
-  membership.joinedAt = event.block.timestamp;
-  membership.joinedAtBlock = event.block.number;
-  membership.leftAt = null;
-  membership.leftAtBlock = null;
-  // membership.isActive = true // TODO: Verify that this key is not needed since we can know if the membership is active using the leftAt
-
-  // Create join event
+  // Create pure event entity
   let joinEvent = new OperatorAddedEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   joinEvent.transactionHash = event.transaction.hash;
   joinEvent.logIndex = event.logIndex;
   joinEvent.blockNumber = event.block.number;
   joinEvent.blockTimestamp = event.block.timestamp;
   joinEvent.contractAddress = event.address;
+
+  // Event-specific fields
   joinEvent.operator = operator.id;
   joinEvent.operatorSet = operatorSet.id;
-
-  // Link events
-  membership.joinEvent = joinEvent.id;
 
   // Save entities
   operator.save();
   operatorSet.save();
-  membership.save();
   joinEvent.save();
+  incrementEventCounter("OperatorAddedEntity", event.block.number, event.block.timestamp);
 
-  log.info("OperatorAddedToOperatorSet processed successfully", []);
+  log.info("OperatorAddedToOperatorSet event saved: {}", [joinEvent.id]);
 }
 
 export function handleOperatorRemovedFromOperatorSet(
   event: OperatorRemovedFromOperatorSet
 ): void {
-  log.info(
-    "Processing OperatorRemovedFromOperatorSet: operator {} from set {}",
-    [
-      event.params.operator.toHexString(),
-      event.params.operatorSet.id.toString(),
-    ]
+  log.info("Processing OperatorRemovedFromOperatorSet event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
+
+  // Create minimal lookup entities if needed
+  let operator = getOrCreateOperator(event.params.operator);
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id
   );
 
-  // Load entities
-  let operator = Operator.load(event.params.operator.toHexString());
-  if (operator == null) {
-    log.warning("Operator not found for set removal: {}", [
-      event.params.operator.toHexString(),
-    ]);
-    return;
-  }
-
-  let operatorSetId =
-    event.params.operatorSet.avs.toHexString() +
-    "-" +
-    event.params.operatorSet.id.toString();
-  let operatorSet = OperatorSet.load(operatorSetId);
-  if (operatorSet == null) {
-    log.warning("OperatorSet not found: {}", [operatorSetId]);
-    return;
-  }
-
-  // Update counters
-  operator.operatorSetCount = operator.operatorSetCount.minus(
-    BigInt.fromI32(1)
-  );
-  operator.lastActivityAt = event.block.timestamp;
-  operator.updatedAt = event.block.timestamp;
-
-  operatorSet.memberCount = operatorSet.memberCount.minus(BigInt.fromI32(1));
-  operatorSet.lastActivityAt = event.block.timestamp;
-
-  // TODO: Update existing membership to mark as inactive - UPDATE "Will removed is active from membership instead"
-  // This requires iterating through memberships to find the active one
-
-  // Create removal event
+  // Create pure event entity
   let removeEvent = new OperatorRemovedEntity(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   removeEvent.transactionHash = event.transaction.hash;
   removeEvent.logIndex = event.logIndex;
   removeEvent.blockNumber = event.block.number;
   removeEvent.blockTimestamp = event.block.timestamp;
   removeEvent.contractAddress = event.address;
+
+  // Event-specific fields
   removeEvent.operator = operator.id;
   removeEvent.operatorSet = operatorSet.id;
 
@@ -442,140 +358,133 @@ export function handleOperatorRemovedFromOperatorSet(
   operator.save();
   operatorSet.save();
   removeEvent.save();
+  incrementEventCounter("OperatorRemovedEntity", event.block.number, event.block.timestamp);
 
-  log.info("OperatorRemovedFromOperatorSet processed successfully", []);
+  log.info("OperatorRemovedFromOperatorSet event saved: {}", [removeEvent.id]);
 }
 
 // ========================================
-// STRATEGY MANAGEMENT EVENTS
+// STRATEGY EVENTS
 // ========================================
 
 export function handleStrategyAddedToOperatorSet(
   event: StrategyAddedToOperatorSet
 ): void {
-  log.info("Processing StrategyAddedToOperatorSet: set {} strategy {}", [
-    event.params.operatorSet.id.toString(),
-    event.params.strategy.toHexString(),
+  log.info("Processing StrategyAddedToOperatorSet event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  let operatorSetId =
-    event.params.operatorSet.avs.toHexString() +
-    "-" +
-    event.params.operatorSet.id.toString();
-  let operatorSet = OperatorSet.load(operatorSetId);
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
+  // Create minimal lookup entities if needed
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id
   );
+  let strategy = getOrCreateStrategy(event.params.strategy);
 
-  if (operatorSet != null) {
-    operatorSet.strategyCount = operatorSet.strategyCount.plus(
-      BigInt.fromI32(1)
-    );
-    operatorSet.lastActivityAt = event.block.timestamp;
-    operatorSet.save();
-  }
-
-  strategy.lastActivityAt = event.block.timestamp;
-  strategy.save();
-
-  // Create strategy event
+  // Create pure event entity
   let strategyEvent = new StrategyOperatorSetEvent(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   strategyEvent.transactionHash = event.transaction.hash;
   strategyEvent.logIndex = event.logIndex;
   strategyEvent.blockNumber = event.block.number;
   strategyEvent.blockTimestamp = event.block.timestamp;
   strategyEvent.contractAddress = event.address;
-  strategyEvent.operatorSet = operatorSetId;
+
+  // Event-specific fields
+  strategyEvent.operatorSet = operatorSet.id;
   strategyEvent.strategy = strategy.id;
   strategyEvent.eventType = "ADDED";
 
+  // Save entities
+  operatorSet.save();
+  strategy.save();
   strategyEvent.save();
+  incrementEventCounter("StrategyOperatorSetEvent", event.block.number, event.block.timestamp);
 
-  log.info("StrategyAddedToOperatorSet processed successfully", []);
+  log.info("StrategyAddedToOperatorSet event saved: {}", [strategyEvent.id]);
 }
 
 export function handleStrategyRemovedFromOperatorSet(
   event: StrategyRemovedFromOperatorSet
 ): void {
-  log.info("Processing StrategyRemovedFromOperatorSet: set {} strategy {}", [
-    event.params.operatorSet.id.toString(),
-    event.params.strategy.toHexString(),
+  log.info("Processing StrategyRemovedFromOperatorSet event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  let operatorSetId =
-    event.params.operatorSet.avs.toHexString() +
-    "-" +
-    event.params.operatorSet.id.toString();
-  let operatorSet = OperatorSet.load(operatorSetId);
-  let strategy = getOrCreateStrategy(
-    event.params.strategy,
-    event.block.timestamp
+  // Create minimal lookup entities if needed
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id
   );
+  let strategy = getOrCreateStrategy(event.params.strategy);
 
-  if (operatorSet != null) {
-    operatorSet.strategyCount = operatorSet.strategyCount.minus(
-      BigInt.fromI32(1)
-    );
-    operatorSet.lastActivityAt = event.block.timestamp;
-    operatorSet.save();
-  }
-
-  strategy.lastActivityAt = event.block.timestamp;
-  strategy.save();
-
-  // Create strategy event
+  // Create pure event entity
   let strategyEvent = new StrategyOperatorSetEvent(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   strategyEvent.transactionHash = event.transaction.hash;
   strategyEvent.logIndex = event.logIndex;
   strategyEvent.blockNumber = event.block.number;
   strategyEvent.blockTimestamp = event.block.timestamp;
   strategyEvent.contractAddress = event.address;
-  strategyEvent.operatorSet = operatorSetId;
+
+  // Event-specific fields
+  strategyEvent.operatorSet = operatorSet.id;
   strategyEvent.strategy = strategy.id;
   strategyEvent.eventType = "REMOVED";
 
+  // Save entities
+  operatorSet.save();
+  strategy.save();
   strategyEvent.save();
+  incrementEventCounter("StrategyOperatorSetEvent", event.block.number, event.block.timestamp);
 
-  log.info("StrategyRemovedFromOperatorSet processed successfully", []);
+  log.info("StrategyRemovedFromOperatorSet event saved: {}", [
+    strategyEvent.id,
+  ]);
 }
 
 // ========================================
-// AVS METADATA EVENTS
+// METADATA EVENTS
 // ========================================
 
 export function handleAVSMetadataURIUpdated(
   event: AVSMetadataURIUpdated
 ): void {
-  log.info("Processing AVSMetadataURIUpdated: AVS {}", [
-    event.params.avs.toHexString(),
+  log.info("Processing AVSMetadataURIUpdated event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  let avs = getOrCreateAVS(event.params.avs, event.block.timestamp);
-  avs.metadataURI = event.params.metadataURI;
-  avs.lastActivityAt = event.block.timestamp;
-  avs.updatedAt = event.block.timestamp;
+  // Create minimal lookup entity if needed
+  let avs = getOrCreateAVS(event.params.avs);
 
-  // Create metadata update event
+  // Create pure event entity
   let metadataUpdate = new AVSMetadataUpdate(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+
+  // Base event fields
   metadataUpdate.transactionHash = event.transaction.hash;
   metadataUpdate.logIndex = event.logIndex;
   metadataUpdate.blockNumber = event.block.number;
   metadataUpdate.blockTimestamp = event.block.timestamp;
   metadataUpdate.contractAddress = event.address;
+
+  // Event-specific fields
   metadataUpdate.avs = avs.id;
   metadataUpdate.metadataURI = event.params.metadataURI;
 
+  // Save entities
   avs.save();
   metadataUpdate.save();
+  incrementEventCounter("AVSMetadataUpdate", event.block.number, event.block.timestamp);
 
-  log.info("AVSMetadataURIUpdated processed successfully", []);
+  log.info("AVSMetadataURIUpdated event saved: {}", [metadataUpdate.id]);
 }
 
 // ========================================
@@ -585,79 +494,120 @@ export function handleAVSMetadataURIUpdated(
 export function handleRedistributionAddressSet(
   event: RedistributionAddressSet
 ): void {
-  log.info("Processing RedistributionAddressSet: set {}", [
-    event.params.operatorSet.id.toString(),
+  log.info("Processing RedistributionAddressSet event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  let operatorSetId =
-    event.params.operatorSet.avs.toHexString() +
-    "-" +
-    event.params.operatorSet.id.toString();
-  let operatorSet = OperatorSet.load(operatorSetId);
+  // Create minimal lookup entity if needed
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id
+  );
 
-  if (operatorSet != null) {
-    operatorSet.redistributionRecipient = event.params.redistributionRecipient;
-    operatorSet.lastActivityAt = event.block.timestamp;
-    operatorSet.save();
-  }
+  // Create pure event entity
+  let redistributionEvent = new RedistributionAddressSetEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  );
+
+  // Base event fields
+  redistributionEvent.transactionHash = event.transaction.hash;
+  redistributionEvent.logIndex = event.logIndex;
+  redistributionEvent.blockNumber = event.block.number;
+  redistributionEvent.blockTimestamp = event.block.timestamp;
+  redistributionEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  redistributionEvent.operatorSet = operatorSet.id;
+  redistributionEvent.redistributionRecipient =
+    event.params.redistributionRecipient;
+
+  // Save entities
+  operatorSet.save();
+  redistributionEvent.save();
+  incrementEventCounter("RedistributionAddressSetEntity", event.block.number, event.block.timestamp);
+
+  log.info("RedistributionAddressSet event saved: {}", [
+    redistributionEvent.id,
+  ]);
 }
 
-// TODO: Look into this, how useful is it?
 export function handleAVSRegistrarSet(event: AVSRegistrarSet): void {
-  log.info("Processing AVSRegistrarSet: AVS {} registrar {}", [
-    event.params.avs.toHexString(),
-    event.params.registrar.toHexString(),
+  log.info("Processing AVSRegistrarSet event: {}", [
+    event.transaction.hash.toHexString(),
   ]);
 
-  let avs = getOrCreateAVS(event.params.avs, event.block.timestamp);
-  avs.lastActivityAt = event.block.timestamp;
-  avs.updatedAt = event.block.timestamp;
+  // Create minimal lookup entity if needed
+  let avs = getOrCreateAVS(event.params.avs);
+
+  // Create pure event entity
+  let registrarEvent = new AVSRegistrarSetEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+  );
+
+  // Base event fields
+  registrarEvent.transactionHash = event.transaction.hash;
+  registrarEvent.logIndex = event.logIndex;
+  registrarEvent.blockNumber = event.block.number;
+  registrarEvent.blockTimestamp = event.block.timestamp;
+  registrarEvent.contractAddress = event.address;
+
+  // Event-specific fields
+  registrarEvent.avs = avs.id;
+  registrarEvent.registrar = event.params.registrar;
+
+  // Save entities
   avs.save();
+  registrarEvent.save();
+  incrementEventCounter("AVSRegistrarSetEntity", event.block.number, event.block.timestamp);
+
+  log.info("AVSRegistrarSet event saved: {}", [registrarEvent.id]);
 }
 
 // ========================================
-// HELPER FUNCTIONS
+// MINIMAL HELPER FUNCTIONS
 // ========================================
 
-function getOrCreateAVS(address: Address, timestamp: BigInt): AVS {
+function getOrCreateOperator(address: Address): Operator {
+  let operator = Operator.load(address.toHexString());
+  if (operator == null) {
+    operator = new Operator(address.toHexString());
+    operator.address = address;
+  }
+  return operator;
+}
+
+function getOrCreateAVS(address: Address): AVS {
   let avs = AVS.load(address.toHexString());
   if (avs == null) {
     avs = new AVS(address.toHexString());
     avs.address = address;
-    avs.metadataURI = null;
-
-    // Initialize counters
-    avs.operatorSetCount = BigInt.fromI32(0);
-    avs.totalOperatorRegistrations = BigInt.fromI32(0);
-    avs.rewardsSubmissionCount = BigInt.fromI32(0);
-    avs.slashingEventCount = BigInt.fromI32(0);
-
-    // Set timestamps
-    avs.createdAt = timestamp;
-    avs.lastActivityAt = timestamp;
-    avs.updatedAt = timestamp;
   }
   return avs;
 }
 
-function getOrCreateStrategy(address: Address, timestamp: BigInt): Strategy {
+function getOrCreateStrategy(address: Address): Strategy {
   let strategy = Strategy.load(address.toHexString());
   if (strategy == null) {
     strategy = new Strategy(address.toHexString());
     strategy.address = address;
-
-    // Initialize counters
-    strategy.totalDeposits = BigInt.fromI32(0);
-    strategy.totalShares = BigInt.fromI32(0);
-    strategy.operatorCount = BigInt.fromI32(0);
-
-    // Initialize status
-    strategy.isWhitelisted = true; // Assume whitelisted until proven otherwise
-    strategy.whitelistedAt = null;
-
-    // Set timestamps
-    strategy.firstDepositAt = null;
-    strategy.lastActivityAt = timestamp;
   }
   return strategy;
+}
+
+function getOrCreateOperatorSet(
+  avsAddress: Address,
+  operatorSetId: BigInt
+): OperatorSet {
+  let id = avsAddress.toHexString() + "-" + operatorSetId.toString();
+  let operatorSet = OperatorSet.load(id);
+  if (operatorSet == null) {
+    operatorSet = new OperatorSet(id);
+    operatorSet.avs = avsAddress.toHexString();
+    operatorSet.operatorSetId = operatorSetId;
+
+    // Ensure AVS exists
+    let avs = getOrCreateAVS(avsAddress);
+    avs.save();
+  }
+  return operatorSet;
 }
