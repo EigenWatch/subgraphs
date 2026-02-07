@@ -8,11 +8,11 @@ services:
   graph-node:
     image: graphprotocol/graph-node
     ports:
-      - "8000:8000"
-      - "8001:8001"
-      - "8020:8020"
-      - "8030:8030"
-      - "8040:8040"
+      - "7000:8000"
+      - "7001:8001"
+      - "7002:8020"
+      - "7003:8030"
+      - "7004:8040"
     depends_on:
       - ipfs
       - rpc-proxy
@@ -30,6 +30,6 @@ services:
   ipfs:
     image: ipfs/kubo:v0.17.0
     ports:
-      - "5001:5001"
+      - "7005:5001"
     volumes:
       - ./data/ipfs:/data/ipfs
