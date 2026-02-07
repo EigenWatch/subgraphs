@@ -45,21 +45,13 @@ The database is initialized via `POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"` in 
 
 ## Running
 
-### Start Infrastructure
+### Start Infrastructure and Deploy
 
 ```bash
 docker compose up -d --build
 ```
 
-### Deploy Subgraph
-
-After graph-node is running, deploy the subgraph using the deployer container:
-
-```bash
-docker compose --profile deploy up deployer --build
-```
-
-The deployer will:
+The deployer container will automatically:
 
 1. Wait for graph-node and IPFS to be ready
 2. Run `graph codegen` and `graph build`
@@ -68,10 +60,10 @@ The deployer will:
 
 ### Redeploy After Changes
 
-To redeploy after making changes to the subgraph:
+To redeploy after making changes to the subgraph, restart the deployer:
 
 ```bash
-docker compose --profile deploy up deployer --build
+docker compose up deployer --build
 ```
 
 ---

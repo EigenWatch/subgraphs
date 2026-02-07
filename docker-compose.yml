@@ -55,8 +55,6 @@ services:
     environment:
       SUBGRAPH_NAME: eigenwatch-ethereum
     restart: "no"
-    profiles:
-      - deploy
   nginx:
     build: ./nginx
     ports:
