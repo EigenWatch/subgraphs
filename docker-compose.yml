@@ -16,8 +16,8 @@ services:
     depends_on:
       - ipfs
       - rpc-proxy
-    extra_hosts:
-      - host.docker.internal:host-gateway
+      - postgres
+
     environment:
       postgres_host: ${POSTGRES_HOST}
       postgres_port: ${POSTGRES_PORT:-5432}
@@ -33,3 +33,13 @@ services:
       - "7005:5001"
     volumes:
       - ./data/ipfs:/data/ipfs
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    ports:
+      - "7006:5432"

@@ -4,12 +4,12 @@ The subgraph has been migrated from The Graph Studio to a self-hosted Graph Node
 
 ## Stack Overview
 
-| Service | Purpose | Image / Source |
-|---|---|---|
-| **graph-node** | Indexes blockchain events, serves GraphQL | `graphprotocol/graph-node` |
-| **rpc-proxy** | Injects API key headers, normalizes RPC responses | `./rpc-proxy` (custom Node.js) |
-| **ipfs** | Stores subgraph manifests and schemas | `ipfs/kubo:v0.17.0` |
-| **postgres** | Stores indexed entity data | External (not in docker-compose) |
+| Service        | Purpose                                           | Image / Source                 |
+| -------------- | ------------------------------------------------- | ------------------------------ |
+| **graph-node** | Indexes blockchain events, serves GraphQL         | `graphprotocol/graph-node`     |
+| **rpc-proxy**  | Injects API key headers, normalizes RPC responses | `./rpc-proxy` (custom Node.js) |
+| **ipfs**       | Stores subgraph manifests and schemas             | `ipfs/kubo:v0.17.0`            |
+| **postgres**   | Stores indexed entity data                        | `postgres:15`                  |
 
 ## Configuration
 
@@ -21,15 +21,15 @@ cp .env.example .env
 
 ### Required Variables
 
-| Variable | Description | Example |
-|---|---|---|
-| `RPC_API_KEY` | API key for the RPC gateway | `your_api_key_here` |
-| `RPC_GATEWAY_URL` | RPC endpoint URL (defaults to `https://gateway.thebuidl.xyz/query`) | `https://gateway.thebuidl.xyz/query` |
-| `POSTGRES_HOST` | PostgreSQL host reachable from Docker | `host.docker.internal` |
-| `POSTGRES_PORT` | PostgreSQL port (defaults to `5432`) | `5432` |
-| `POSTGRES_USER` | PostgreSQL user | `graph-node` |
-| `POSTGRES_PASSWORD` | PostgreSQL password | `your_password_here` |
-| `POSTGRES_DB` | PostgreSQL database name | `graph_node` |
+| Variable            | Description                                                         | Example                              |
+| ------------------- | ------------------------------------------------------------------- | ------------------------------------ |
+| `RPC_API_KEY`       | API key for the RPC gateway                                         | `your_api_key_here`                  |
+| `RPC_GATEWAY_URL`   | RPC endpoint URL (defaults to `https://gateway.thebuidl.xyz/query`) | `https://gateway.thebuidl.xyz/query` |
+| `POSTGRES_HOST`     | PostgreSQL host                                                     | `postgres`                           |
+| `POSTGRES_PORT`     | PostgreSQL port (defaults to `5432`)                                | `5432`                               |
+| `POSTGRES_USER`     | PostgreSQL user                                                     | `graph-node`                         |
+| `POSTGRES_PASSWORD` | PostgreSQL password                                                 | `your_password_here`                 |
+| `POSTGRES_DB`       | PostgreSQL database name                                            | `graph_node`                         |
 
 ### PostgreSQL Setup
 
@@ -40,7 +40,7 @@ CREATE USER "graph-node" WITH PASSWORD 'your_password_here';
 CREATE DATABASE graph_node OWNER "graph-node";
 ```
 
-The `graph-node` container uses `extra_hosts: host.docker.internal:host-gateway` to reach the host machine's PostgreSQL on Linux. If your PostgreSQL is on a different host, set `POSTGRES_HOST` to its IP or hostname.
+The `graph-node` container connects to the local `postgres` service. The database is initialized automatically.
 
 ## RPC Proxy
 
@@ -66,14 +66,15 @@ yarn deploy-local
 
 ## Exposed Ports
 
-| Port | Service | Purpose |
-|---|---|---|
-| `8000` | graph-node | **GraphQL query endpoint** |
-| `8001` | graph-node | GraphQL subscriptions |
-| `8020` | graph-node | Admin API (deploy/remove subgraphs) |
-| `8030` | graph-node | Indexing status API |
-| `8040` | graph-node | Prometheus metrics |
-| `5001` | ipfs | IPFS API |
+| Port   | Service    | Purpose                                |
+| ------ | ---------- | -------------------------------------- |
+| `7000` | graph-node | **GraphQL query endpoint**             |
+| `7001` | graph-node | GraphQL subscriptions                  |
+| `7002` | graph-node | Admin API (deploy/remove subgraphs)    |
+| `7003` | graph-node | Indexing status API                    |
+| `7004` | graph-node | Prometheus metrics                     |
+| `7005` | ipfs       | IPFS API                               |
+| `7006` | postgres   | PostgreSQL (mapped from internal 5432) |
 
 ## Monitoring Endpoints
 
@@ -82,7 +83,7 @@ yarn deploy-local
 After deploying the subgraph, query it at:
 
 ```
-http://localhost:8000/subgraphs/name/eigenwatch-ethereum
+http://localhost:7000/subgraphs/name/eigenwatch-ethereum
 ```
 
 Every query supports the `_meta` field for sync status:
@@ -90,7 +91,9 @@ Every query supports the `_meta` field for sync status:
 ```graphql
 {
   _meta {
-    block { number }
+    block {
+      number
+    }
     hasIndexingErrors
     deployment
   }
@@ -99,7 +102,7 @@ Every query supports the `_meta` field for sync status:
 
 ### Indexing Status (port 8030)
 
-The equivalent of The Graph Studio's sync percentage. POST to `http://localhost:8030/graphql`:
+The equivalent of The Graph Studio's sync percentage. POST to `http://localhost:7003/graphql`:
 
 ```graphql
 {
@@ -109,10 +112,16 @@ The equivalent of The Graph Studio's sync percentage. POST to `http://localhost:
     health
     chains {
       network
-      latestBlock { number }
-      chainHeadBlock { number }
+      latestBlock {
+        number
+      }
+      chainHeadBlock {
+        number
+      }
     }
-    fatalError { message }
+    fatalError {
+      message
+    }
   }
 }
 ```
@@ -122,7 +131,7 @@ The equivalent of The Graph Studio's sync percentage. POST to `http://localhost:
 ### Prometheus Metrics (port 8040)
 
 ```bash
-curl http://localhost:8040/metrics
+curl http://localhost:7004/metrics
 ```
 
 Exposes entity counts, block processing rates, query latency, handler execution times, and more. Scrape this with Prometheus and visualize with Grafana.
