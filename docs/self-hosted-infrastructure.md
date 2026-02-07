@@ -1,15 +1,17 @@
 # Self-Hosted Infrastructure
 
-The subgraph has been migrated from The Graph Studio to a self-hosted Graph Node stack. This document covers the infrastructure components, configuration, and available monitoring endpoints.
+The subgraph has been migrated from The Graph Studio to a self-hosted Graph Node stack. This document covers the infrastructure components, configuration, security, and monitoring.
 
 ## Stack Overview
 
 | Service        | Purpose                                           | Image / Source                 |
 | -------------- | ------------------------------------------------- | ------------------------------ |
+| **nginx**      | Reverse proxy with API key authentication         | `./nginx` (custom)             |
 | **graph-node** | Indexes blockchain events, serves GraphQL         | `graphprotocol/graph-node`     |
 | **rpc-proxy**  | Injects API key headers, normalizes RPC responses | `./rpc-proxy` (custom Node.js) |
 | **ipfs**       | Stores subgraph manifests and schemas             | `ipfs/kubo:v0.17.0`            |
 | **postgres**   | Stores indexed entity data                        | `postgres:15`                  |
+| **deployer**   | Automated subgraph deployment                     | `./deployer` (custom)          |
 
 ## Configuration
 
@@ -26,64 +28,112 @@ cp .env.example .env
 | `RPC_API_KEY`       | API key for the RPC gateway                                         | `your_api_key_here`                  |
 | `RPC_GATEWAY_URL`   | RPC endpoint URL (defaults to `https://gateway.thebuidl.xyz/query`) | `https://gateway.thebuidl.xyz/query` |
 | `POSTGRES_HOST`     | PostgreSQL host                                                     | `postgres`                           |
-| `POSTGRES_PORT`     | PostgreSQL port (defaults to `5432`)                                | `5432`                               |
-| `POSTGRES_USER`     | PostgreSQL user                                                     | `graph-node`                         |
+| `POSTGRES_PORT`     | PostgreSQL port (internal, always `5432`)                           | `5432`                               |
+| `POSTGRES_USER`     | PostgreSQL user                                                     | `postgres`                           |
 | `POSTGRES_PASSWORD` | PostgreSQL password                                                 | `your_password_here`                 |
 | `POSTGRES_DB`       | PostgreSQL database name                                            | `graph_node`                         |
+| `GRAPHQL_API_KEY`   | API key for GraphQL endpoint authentication                         | `your_secure_api_key_here`           |
 
 ### PostgreSQL Setup
 
-The database must exist before starting graph-node. On your PostgreSQL instance:
+The PostgreSQL database is created automatically by the `postgres` container with the correct settings:
 
-```sql
-CREATE USER "graph-node" WITH PASSWORD 'your_password_here';
-CREATE DATABASE graph_node OWNER "graph-node";
+- **Encoding**: UTF8
+- **Locale**: C (required by graph-node)
+
+The database is initialized via `POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"` in docker-compose.
+
+## Running
+
+### Start Infrastructure
+
+```bash
+docker compose up -d --build
 ```
 
-The `graph-node` container connects to the local `postgres` service. The database is initialized automatically.
+### Deploy Subgraph
+
+After graph-node is running, deploy the subgraph using the deployer container:
+
+```bash
+docker compose --profile deploy up deployer --build
+```
+
+The deployer will:
+
+1. Wait for graph-node and IPFS to be ready
+2. Run `graph codegen` and `graph build`
+3. Create and deploy the subgraph
+4. Exit after successful deployment
+
+### Redeploy After Changes
+
+To redeploy after making changes to the subgraph:
+
+```bash
+docker compose --profile deploy up deployer --build
+```
+
+---
+
+## Security
+
+### API Key Authentication
+
+All GraphQL endpoints are protected by API key authentication via nginx. Clients must include the `X-API-Key` header:
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_secure_api_key_here" \
+  -d '{"query": "{ _meta { block { number } } }"}' \
+  http://your-server:7000/subgraphs/name/eigenwatch-ethereum
+```
+
+Without a valid API key, requests return `401 Unauthorized`.
+
+### Port Security
+
+| Port   | Service    | Access      | Purpose                             |
+| ------ | ---------- | ----------- | ----------------------------------- |
+| `7000` | nginx      | 🔐 Public   | GraphQL + Status (API key required) |
+| —      | graph-node | 🔒 Internal | No direct external access           |
+| —      | ipfs       | 🔒 Internal | Localhost only (127.0.0.1:7005)     |
+| —      | postgres   | 🔒 Internal | Localhost only (127.0.0.1:7006)     |
+
+Only port `7000` is exposed publicly, and it requires API key authentication.
+
+### Rate Limiting
+
+The nginx proxy includes rate limiting:
+
+- **100 requests/second** per IP
+- **Burst**: 50 requests
+
+---
 
 ## RPC Proxy
 
-The RPC proxy (`rpc-proxy/`) is a lightweight Fastify service that sits between graph-node and the RPC gateway. It handles two things:
+The RPC proxy (`rpc-proxy/`) is a lightweight Fastify service that sits between graph-node and the RPC gateway. It handles:
 
 1. **Header injection**: Adds the `x-api-key` header required by the gateway.
 2. **Response normalization**: If the gateway returns a wrapped envelope (`{status, result, message}`) instead of standard JSON-RPC 2.0, the proxy unwraps it to `{jsonrpc, id, result}`.
 
 Graph-node connects to it internally via `http://rpc-proxy:3000` — no external port is exposed.
 
-## Running
-
-```bash
-docker compose up --build
-```
-
-After graph-node starts, deploy the subgraph:
-
-```bash
-yarn create-local
-yarn deploy-local
-```
-
-## Exposed Ports
-
-| Port   | Service    | Purpose                                |
-| ------ | ---------- | -------------------------------------- |
-| `7000` | graph-node | **GraphQL query endpoint**             |
-| `7001` | graph-node | GraphQL subscriptions                  |
-| `7002` | graph-node | Admin API (deploy/remove subgraphs)    |
-| `7003` | graph-node | Indexing status API                    |
-| `7004` | graph-node | Prometheus metrics                     |
-| `7005` | ipfs       | IPFS API                               |
-| `7006` | postgres   | PostgreSQL (mapped from internal 5432) |
+---
 
 ## Monitoring Endpoints
 
-### GraphQL Queries (port 8000)
+All monitoring endpoints require the `X-API-Key` header.
 
-After deploying the subgraph, query it at:
+### GraphQL Queries
+
+Query the subgraph at:
 
 ```
-http://localhost:7000/subgraphs/name/eigenwatch-ethereum
+POST http://your-server:7000/subgraphs/name/eigenwatch-ethereum
+Header: X-API-Key: your_api_key
 ```
 
 Every query supports the `_meta` field for sync status:
@@ -100,9 +150,14 @@ Every query supports the `_meta` field for sync status:
 }
 ```
 
-### Indexing Status (port 8030)
+### Indexing Status
 
-The equivalent of The Graph Studio's sync percentage. POST to `http://localhost:7003/graphql`:
+Check sync progress at:
+
+```
+POST http://your-server:7000/graphql
+Header: X-API-Key: your_api_key
+```
 
 ```graphql
 {
@@ -128,19 +183,99 @@ The equivalent of The Graph Studio's sync percentage. POST to `http://localhost:
 
 `latestBlock.number / chainHeadBlock.number` gives you the sync progress ratio.
 
-### Prometheus Metrics (port 8040)
+### Prometheus Metrics
 
 ```bash
-curl http://localhost:7004/metrics
+curl http://your-server:7000/metrics
 ```
 
 Exposes entity counts, block processing rates, query latency, handler execution times, and more. Scrape this with Prometheus and visualize with Grafana.
 
-### RPC Proxy Health Check
+### Health Check
 
 ```bash
-curl http://localhost:3000/health
-# Returns: {"status":"ok"}
+curl http://your-server:7000/health
+# Returns: ok
 ```
 
-Only reachable from within the Docker network unless you expose the port.
+---
+
+## Deployer Container
+
+The deployer (`deployer/`) automates subgraph deployment from within the Docker network. This eliminates the need to expose admin ports externally.
+
+### How It Works
+
+1. Waits for graph-node admin API (`http://graph-node:8020`) to be ready
+2. Waits for IPFS (`http://ipfs:5001`) to be ready
+3. Runs `graph codegen` and `graph build`
+4. Creates the subgraph (if not exists)
+5. Deploys the subgraph with version label `v1`
+
+### Configuration
+
+| Environment Variable | Description          | Default               |
+| -------------------- | -------------------- | --------------------- |
+| `SUBGRAPH_NAME`      | Name of the subgraph | `eigenwatch-ethereum` |
+
+### Files
+
+| File                  | Purpose                              |
+| --------------------- | ------------------------------------ |
+| `deployer/Dockerfile` | Container with graph-cli installed   |
+| `deployer/deploy.sh`  | Deployment script with health checks |
+
+---
+
+## Nginx Proxy
+
+The nginx proxy (`nginx/`) handles API key authentication and rate limiting.
+
+### Files
+
+| File                        | Purpose                                       |
+| --------------------------- | --------------------------------------------- |
+| `nginx/Dockerfile`          | Nginx with envsubst for variable substitution |
+| `nginx/nginx.conf.template` | Config template with API key validation       |
+| `nginx/start.sh`            | Startup script that injects env vars          |
+
+### Endpoints Proxied
+
+| Path           | Backend         | Auth Required |
+| -------------- | --------------- | ------------- |
+| `/subgraphs/*` | graph-node:8000 | ✅ Yes        |
+| `/graphql`     | graph-node:8030 | ✅ Yes        |
+| `/metrics`     | graph-node:8040 | ❌ No         |
+| `/health`      | Direct response | ❌ No         |
+
+---
+
+## Troubleshooting
+
+### Database Encoding Error
+
+```
+database encoding is `SQL_ASCII` but must be `UTF8`
+```
+
+**Fix**: Delete the postgres data directory and restart:
+
+```bash
+docker compose down
+rm -rf ./data/postgres-c
+docker compose up -d
+```
+
+### Connection Refused to Postgres
+
+Ensure `POSTGRES_PORT` in `.env` is set to `5432` (internal port), not the external mapped port.
+
+### Deployer Fails
+
+Check if graph-node is running:
+
+```bash
+docker compose logs graph-node
+```
+
+Wait for "Starting up" message before running the deployer.

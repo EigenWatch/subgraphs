@@ -7,12 +7,13 @@ services:
       PORT: 3000
   graph-node:
     image: graphprotocol/graph-node
-    ports:
-      - "7000:8000"
-      - "7001:8001"
-      - "7002:8020"
-      - "7003:8030"
-      - "7004:8040"
+    # No public ports - nginx handles external access
+    expose:
+      - "8000"
+      - "8001"
+      - "8020"
+      - "8030"
+      - "8040"
     depends_on:
       - ipfs
       - rpc-proxy
@@ -30,7 +31,7 @@ services:
   ipfs:
     image: ipfs/kubo:v0.17.0
     ports:
-      - "7005:5001"
+      - "127.0.0.1:7005:5001"
     volumes:
       - ./data/ipfs:/data/ipfs
   postgres:
@@ -43,4 +44,25 @@ services:
     volumes:
       - ./data/postgres-c:/var/lib/postgresql/data
     ports:
-      - "7006:5432"
+      - "127.0.0.1:7006:5432"
+  deployer:
+    build: ./deployer
+    depends_on:
+      - graph-node
+      - ipfs
+    volumes:
+      - .:/subgraph:ro
+    environment:
+      SUBGRAPH_NAME: eigenwatch-ethereum
+    restart: "no"
+    profiles:
+      - deploy
+  nginx:
+    build: ./nginx
+    ports:
+      - "7000:80"
+    depends_on:
+      - graph-node
+    environment:
+      GRAPHQL_API_KEY: ${GRAPHQL_API_KEY}
+    restart: unless-stopped
