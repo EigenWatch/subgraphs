@@ -395,7 +395,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "chain_head_cache_latest_block - max(deployment_head)",
+          "expr": "scalar(chain_head_cache_latest_block) - scalar(max(deployment_head))",
           "refId": "A"
         }
       ],
@@ -437,7 +437,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "(max(deployment_head) / chain_head_cache_latest_block) * 100",
+          "expr": "(scalar(max(deployment_head)) / scalar(chain_head_cache_latest_block)) * 100",
           "refId": "A"
         }
       ],
@@ -477,7 +477,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "(chain_head_cache_latest_block - max(deployment_head)) / (max(rate(deployment_head[1h])) > 0 or vector(0.001))",
+          "expr": "(scalar(chain_head_cache_latest_block) - scalar(max(deployment_head))) / scalar(clamp_min(max(rate(deployment_head[15m])), 0.001))",
           "refId": "A"
         }
       ],
@@ -563,8 +563,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "sum(rate(query_parsing_time_count[5m])) by (deployment)",
-          "legendFormat": "{{deployment}}",
+          "expr": "sum(rate(query_cache_status_count[5m]))",
+          "legendFormat": "Queries",
           "refId": "A"
         }
       ],
