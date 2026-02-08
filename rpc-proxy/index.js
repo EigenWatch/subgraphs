@@ -35,6 +35,13 @@ const fallbackCounter = new client.Counter({
   registers: [register],
 });
 
+const completeFailureCounter = new client.Counter({
+  name: "rpc_complete_failures_total",
+  help: "Requests that failed on ALL providers - client received an error",
+  labelNames: ["method"],
+  registers: [register],
+});
+
 const activeProvider = new client.Gauge({
   name: "rpc_active_provider",
   help: "Currently active provider (1 = primary, 2 = first fallback, etc)",
@@ -349,6 +356,9 @@ fastify.post("/", async (request, reply) => {
       lastError = err;
     }
   }
+
+  // Track complete failure
+  completeFailureCounter.inc({ method });
 
   fastify.log.error(
     { method, error: lastError?.message },
