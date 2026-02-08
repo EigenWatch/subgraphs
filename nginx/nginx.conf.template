@@ -92,16 +92,15 @@ http {
 
         # Subgraph Deployment API (key in URL path for graph-cli compatibility)
         # Usage: https://subgraph.eigenwatch.xyz/deploy/<DEPLOY_KEY>/
-        location ~ ^/deploy/([^/]+)(/.*)?$ {
+        location ~ ^/deploy/([^/]+) {
             set $deploy_key $1;
-            set $deploy_path $2;
             
             if ($deploy_key != "${GRAPHQL_API_KEY}") {
                 return 401 '{"error": "Unauthorized - Invalid deploy key"}';
             }
 
-            # Proxy to Graph Node JSON-RPC admin API
-            proxy_pass http://graph-node:8020$deploy_path;
+            # Proxy to Graph Node JSON-RPC admin API (always to root path)
+            proxy_pass http://graph-node:8020/;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
@@ -112,7 +111,7 @@ http {
         }
 
         # IPFS API (key in URL path for graph-cli compatibility)
-        # Usage: https://subgraph.eigenwatch.xyz/ipfs/<DEPLOY_KEY>/
+        # Usage: https://subgraph.eigenwatch.xyz/ipfs/<DEPLOY_KEY>/api/v0/add
         location ~ ^/ipfs/([^/]+)(/.*)?$ {
             set $deploy_key $1;
             set $ipfs_path $2;
@@ -121,7 +120,13 @@ http {
                 return 401 '{"error": "Unauthorized - Invalid deploy key"}';
             }
 
-            proxy_pass http://ipfs:5001$ipfs_path;
+            # Default to root if no path
+            set $final_path "/";
+            if ($ipfs_path != "") {
+                set $final_path $ipfs_path;
+            }
+
+            proxy_pass http://ipfs:5001$final_path;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
             
