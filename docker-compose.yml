@@ -93,14 +93,14 @@ services:
     ports:
       - "3100:3100"
     volumes:
-      - ./monitoring/loki:/etc/loki
+      - ./monitoring/loki/loki-config.yaml:/etc/loki/loki-config.yaml
     command: -config.file=/etc/loki/loki-config.yaml
     restart: unless-stopped
 
   promtail:
     image: grafana/promtail:2.9.2
     volumes:
-      - ./monitoring/promtail:/etc/promtail
+      - ./monitoring/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock
     command: -config.file=/etc/promtail/promtail-config.yaml
