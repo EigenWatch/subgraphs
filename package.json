@@ -5,6 +5,8 @@
     "codegen": "graph codegen",
     "build": "graph build",
     "deploy": "graph deploy --node https://api.studio.thegraph.com/deploy/ eigenwatch-ethereum",
+    "create:remote": "graph create --node https://subgraph.eigenwatch.xyz/deploy --headers \"{\\\"X-API-Key\\\": \\\"$GRAPH_API_KEY\\\"}\" eigenwatch-ethereum",
+    "deploy:remote": "graph deploy --node https://subgraph.eigenwatch.xyz/deploy --ipfs https://subgraph.eigenwatch.xyz/ipfs --headers \"{\\\"X-API-Key\\\": \\\"$GRAPH_API_KEY\\\"}\" eigenwatch-ethereum --version-label ${VERSION:-v0.0.1}",
     "test": "graph test"
   },
   "dependencies": {

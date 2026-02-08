@@ -89,5 +89,37 @@ http {
             proxy_http_version 1.1;
             proxy_set_header Host $host;
         }
+
+        # Subgraph Deployment API (protected - for remote graph deploy)
+        location /deploy {
+            if ($http_x_api_key != "${GRAPHQL_API_KEY}") {
+                return 401 '{"error": "Unauthorized - Invalid or missing API key"}';
+            }
+
+            # Proxy to Graph Node JSON-RPC admin API
+            proxy_pass http://graph-node:8020;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header Content-Type application/json;
+            
+            # Allow large subgraph uploads
+            client_max_body_size 50M;
+        }
+
+        # IPFS API (protected - for subgraph deployment)
+        location /ipfs/ {
+            if ($http_x_api_key != "${GRAPHQL_API_KEY}") {
+                return 401 '{"error": "Unauthorized - Invalid or missing API key"}';
+            }
+
+            rewrite ^/ipfs/(.*) /$1 break;
+            proxy_pass http://ipfs:5001;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            
+            # Allow large file uploads
+            client_max_body_size 50M;
+        }
     }
 }

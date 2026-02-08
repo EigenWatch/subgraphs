@@ -50,16 +50,7 @@ services:
       - ./data/postgres-c:/var/lib/postgresql/data
     ports:
       - "127.0.0.1:7006:5432"
-  deployer:
-    build: ./deployer
-    depends_on:
-      - graph-node
-      - ipfs
-    volumes:
-      - .:/subgraph:ro
-    environment:
-      SUBGRAPH_NAME: eigenwatch-ethereum
-    restart: "no"
+
   nginx:
     build: ./nginx
     ports:

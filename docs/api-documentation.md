@@ -32,6 +32,8 @@ X-API-Key: your_api_key_here
 | `/prometheus/*` | ✅ Yes        |
 | `/rpc-metrics`  | ✅ Yes        |
 | `/metrics`      | ✅ Yes        |
+| `/deploy`       | ✅ Yes        |
+| `/ipfs/*`       | ✅ Yes        |
 
 ---
 
@@ -251,6 +253,35 @@ GET /metrics
 curl -H "X-API-Key: your_api_key" \
   https://subgraph.eigenwatch.xyz/metrics
 ```
+
+---
+
+### 7. Subgraph Deployment API
+
+Deploy subgraphs remotely via the Graph Node admin API.
+
+**Prerequisites**:
+
+- Install dependencies: `npm install`
+- Build your subgraph: `npm run codegen && npm run build`
+
+**Deployment Commands**:
+
+```bash
+# Set your API key for authentication
+export GRAPH_API_KEY="your_api_key"
+
+# Create the subgraph (first time only)
+npm run create:remote
+
+# Deploy the subgraph (uses v0.0.1 by default)
+npm run deploy:remote
+
+# Deploy with a specific version
+VERSION=v0.1.0 npm run deploy:remote
+```
+
+**Note**: The scripts in `package.json` handle the endpoint URLs and header formatting automatically.
 
 ---
 
