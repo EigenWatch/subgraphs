@@ -30,6 +30,9 @@ services:
       ipfs: "ipfs:5001"
       ethereum: "mainnet:http://rpc-proxy:3000"
       GRAPH_LOG: info
+      # Query limits (defaults: 1000/5000)
+      GRAPH_GRAPHQL_MAX_FIRST: 5000
+      GRAPH_GRAPHQL_MAX_SKIP: 10000
   ipfs:
     image: ipfs/kubo:v0.17.0
     ports:
@@ -63,6 +66,27 @@ services:
       - "7000:80"
     depends_on:
       - graph-node
+      - prometheus
+      - rpc-proxy
     environment:
       GRAPHQL_API_KEY: ${GRAPHQL_API_KEY}
     restart: unless-stopped
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    # No public ports - access via nginx at /prometheus/ with API key
+    expose:
+      - "9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    depends_on:
+      - rpc-proxy
+      - graph-node
+
+volumes:
+  prometheus_data:

@@ -54,9 +54,40 @@ http {
             proxy_set_header Host $host;
         }
 
-        # Metrics endpoint (optional: could lock this down too)
+        # Graph Node Metrics (protected)
         location /metrics {
+            if ($http_x_api_key != "${GRAPHQL_API_KEY}") {
+                return 401 '{"error": "Unauthorized - Invalid or missing API key"}';
+            }
+
             proxy_pass http://graph-node:8040;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+        }
+
+        # Prometheus API (protected - for external Grafana)
+        location /prometheus/ {
+            if ($http_x_api_key != "${GRAPHQL_API_KEY}") {
+                return 401 '{"error": "Unauthorized - Invalid or missing API key"}';
+            }
+
+            # Strip /prometheus prefix before proxying
+            rewrite ^/prometheus/(.*) /$1 break;
+            proxy_pass http://prometheus:9090;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        # RPC Proxy Metrics (protected - for external Grafana)
+        location /rpc-metrics {
+            if ($http_x_api_key != "${GRAPHQL_API_KEY}") {
+                return 401 '{"error": "Unauthorized - Invalid or missing API key"}';
+            }
+
+            proxy_pass http://rpc-proxy:3000/metrics;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
         }
     }
 }

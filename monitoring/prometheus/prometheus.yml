@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  # RPC Proxy metrics (port 3000 inside container)
+  - job_name: "rpc-proxy"
+    static_configs:
+      - targets: ["rpc-proxy:3000"]
+
+  # Graph Node metrics (port 8040 inside container)
+  - job_name: "graph-node"
+    static_configs:
+      - targets: ["graph-node:8040"]
+
+  # Prometheus self-monitoring
+  - job_name: "prometheus-local"
+    static_configs:
+      - targets: ["localhost:9090"]
+# Optional: Add remote_write config if you want to push metrics to a central store (Mimir/Thanos) instead of running Grafana directly against this instance.
+# remote_write:
+#   - url: "http://central-prometheus.example.com/api/v1/write"
