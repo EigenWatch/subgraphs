@@ -41,7 +41,20 @@ const activeProvider = new client.Gauge({
   registers: [register],
 });
 
-// Provider configuration
+const loadBalanceMode = new client.Gauge({
+  name: "rpc_load_balance_mode",
+  help: "Current mode (0 = fallback only, 1 = load balancing)",
+  registers: [register],
+});
+
+const blocksBehind = new client.Gauge({
+  name: "rpc_blocks_behind",
+  help: "Number of blocks the subgraph is behind the chain head",
+  registers: [register],
+});
+
+// Provider configuration with weights for load balancing
+// During backfill: thebuidl gets 40%, others split 60%
 const PROVIDERS = [
   {
     name: "thebuidl",
@@ -49,6 +62,7 @@ const PROVIDERS = [
     apiKey: process.env.RPC_API_KEY,
     headers: (apiKey) => ({ "x-api-key": apiKey }),
     unwrap: true,
+    weight: 50, // 40% of traffic during load balance mode
   },
   {
     name: "alchemy",
@@ -56,17 +70,35 @@ const PROVIDERS = [
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
+    weight: 25, // 20% of traffic during load balance mode
   },
+  // {
+  //   name: "alchemy2",
+  //   url: process.env.ALCHEMY_RPC_URL_2,
+  //   apiKey: null,
+  //   headers: () => ({}),
+  //   unwrap: false,
+  //   weight: 20, // 20% of traffic during load balance mode
+  // },
   {
     name: "infura",
     url: process.env.INFURA_RPC_URL,
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
+    weight: 25, // 20% of traffic during load balance mode
   },
 ];
 
 const PORT = process.env.PORT || 3000;
+const BACKFILL_THRESHOLD = parseInt(
+  process.env.BACKFILL_THRESHOLD || "1000",
+  10,
+);
+
+// State tracking
+let currentBlocksBehind = Infinity; // Start in load balance mode
+let isLoadBalanceMode = true;
 
 // Get list of configured providers
 function getActiveProviders() {
@@ -74,6 +106,27 @@ function getActiveProviders() {
     if (p.name === "thebuidl") return p.apiKey;
     return p.url;
   });
+}
+
+// Select provider based on mode and weights
+function selectProvider(providers) {
+  if (!isLoadBalanceMode || providers.length === 1) {
+    // Fallback mode: always return first provider
+    return providers[0];
+  }
+
+  // Load balance mode: weighted random selection
+  const totalWeight = providers.reduce((sum, p) => sum + p.weight, 0);
+  let random = Math.random() * totalWeight;
+
+  for (const provider of providers) {
+    random -= provider.weight;
+    if (random <= 0) {
+      return provider;
+    }
+  }
+
+  return providers[0]; // Fallback to first if something goes wrong
 }
 
 // Normalize response from wrapped format if needed
@@ -147,12 +200,79 @@ async function makeRequest(provider, body, method) {
   }
 }
 
+// Fetch current indexing status to determine mode
+async function updateIndexingStatus() {
+  try {
+    // Query graph-node indexing status API
+    const response = await fetch("http://graph-node:8030/graphql", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `{
+          indexingStatuses {
+            synced
+            health
+            chains {
+              network
+              chainHeadBlock { number }
+              latestBlock { number }
+            }
+          }
+        }`,
+      }),
+    });
+
+    if (!response.ok) {
+      fastify.log.warn("Failed to fetch indexing status");
+      return;
+    }
+
+    const data = await response.json();
+    const statuses = data.data?.indexingStatuses || [];
+
+    // Find mainnet chain info
+    for (const status of statuses) {
+      for (const chain of status.chains || []) {
+        if (chain.network === "mainnet") {
+          const chainHead = parseInt(chain.chainHeadBlock?.number || "0", 10);
+          const latestIndexed = parseInt(chain.latestBlock?.number || "0", 10);
+          const behind = chainHead - latestIndexed;
+
+          currentBlocksBehind = behind;
+          blocksBehind.set(behind);
+
+          const wasLoadBalanceMode = isLoadBalanceMode;
+          isLoadBalanceMode = behind > BACKFILL_THRESHOLD;
+          loadBalanceMode.set(isLoadBalanceMode ? 1 : 0);
+
+          if (wasLoadBalanceMode !== isLoadBalanceMode) {
+            fastify.log.info(
+              {
+                blocksBehind: behind,
+                threshold: BACKFILL_THRESHOLD,
+                mode: isLoadBalanceMode ? "load-balance" : "fallback",
+              },
+              "Mode changed",
+            );
+          }
+          return;
+        }
+      }
+    }
+  } catch (err) {
+    fastify.log.warn({ error: err.message }, "Error updating indexing status");
+  }
+}
+
 // Health check endpoint
 fastify.get("/health", async () => {
   const providers = getActiveProviders();
   return {
     status: "ok",
     providers: providers.map((p) => p.name),
+    mode: isLoadBalanceMode ? "load-balance" : "fallback",
+    blocksBehind: currentBlocksBehind,
+    threshold: BACKFILL_THRESHOLD,
   };
 });
 
@@ -178,15 +298,37 @@ fastify.post("/", async (request, reply) => {
 
   let lastError;
   let previousProvider = null;
+  let attempts = 0;
+  const maxAttempts = providers.length;
+  const triedProviders = new Set();
 
-  for (let i = 0; i < providers.length; i++) {
-    const provider = providers[i];
+  while (attempts < maxAttempts) {
+    // Select provider (weighted for load balance, first for fallback)
+    let provider;
+    if (isLoadBalanceMode) {
+      // In load balance mode, select weighted random (excluding already tried)
+      const availableProviders = providers.filter(
+        (p) => !triedProviders.has(p.name),
+      );
+      if (availableProviders.length === 0) break;
+      provider = selectProvider(availableProviders);
+    } else {
+      // In fallback mode, go through providers in order
+      provider = providers[attempts];
+    }
+
+    triedProviders.add(provider.name);
+    attempts++;
 
     try {
       const result = await makeRequest(provider, body, method);
-      activeProvider.set(i + 1);
+      activeProvider.set(providers.indexOf(provider) + 1);
       fastify.log.info(
-        { provider: provider.name, method },
+        {
+          provider: provider.name,
+          method,
+          mode: isLoadBalanceMode ? "load-balance" : "fallback",
+        },
         "Request successful",
       );
       return result;
@@ -229,7 +371,15 @@ fastify.listen({ port: PORT, host: "0.0.0.0" }, (err) => {
   }
   const providers = getActiveProviders();
   fastify.log.info(
-    { providers: providers.map((p) => p.name) },
+    {
+      providers: providers.map((p) => p.name),
+      backfillThreshold: BACKFILL_THRESHOLD,
+      mode: isLoadBalanceMode ? "load-balance" : "fallback",
+    },
     "RPC proxy started",
   );
+
+  // Update indexing status every 30 seconds
+  updateIndexingStatus();
+  setInterval(updateIndexingStatus, 30000);
 });

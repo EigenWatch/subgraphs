@@ -17,6 +17,11 @@ scrape_configs:
   - job_name: "prometheus-local"
     static_configs:
       - targets: ["localhost:9090"]
+
+  # Container resource metrics via cAdvisor
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]
 # Optional: Add remote_write config if you want to push metrics to a central store (Mimir/Thanos) instead of running Grafana directly against this instance.
 # remote_write:
 #   - url: "http://central-prometheus.example.com/api/v1/write"

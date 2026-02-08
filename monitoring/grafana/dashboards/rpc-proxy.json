@@ -32,22 +32,65 @@
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "options": { "1": { "text": "thebuidl" } }, "type": "value" },
-            { "options": { "2": { "text": "alchemy" } }, "type": "value" },
-            { "options": { "3": { "text": "infura" } }, "type": "value" }
+            { "options": { "0": { "text": "Fallback" } }, "type": "value" },
+            { "options": { "1": { "text": "Load Balance" } }, "type": "value" }
           ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 2 },
-              { "color": "red", "value": 3 }
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 1 }
             ]
           }
         }
       },
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
       "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "rpc_load_balance_mode",
+          "refId": "A"
+        }
+      ],
+      "title": "Mode",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "1": { "text": "thebuidl" } }, "type": "value" },
+            { "options": { "2": { "text": "alchemy" } }, "type": "value" },
+            { "options": { "3": { "text": "alchemy2" } }, "type": "value" },
+            { "options": { "4": { "text": "infura" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "orange", "value": 3 },
+              { "color": "red", "value": 4 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "id": 3,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
@@ -73,7 +116,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
       "fieldConfig": { "defaults": { "unit": "short" } },
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
       "id": 5,
       "options": {
         "colorMode": "value",
@@ -102,7 +145,7 @@
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
       "id": 6,
       "options": {
         "colorMode": "value",
@@ -134,7 +177,7 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
       "id": 7,
       "options": {
         "colorMode": "value",
@@ -166,7 +209,7 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
       "id": 8,
       "options": {
         "colorMode": "value",
@@ -219,12 +262,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "rate(rpc_requests_total[5m])",
-          "legendFormat": "{{provider}} - {{method}} - {{status}}",
+          "expr": "sum(rate(rpc_requests_total[5m])) by (provider)",
+          "legendFormat": "{{provider}}",
           "refId": "A"
         }
       ],
-      "title": "Request Rate (per 5m)",
+      "title": "Requests by Provider",
       "type": "timeseries"
     },
     {
@@ -237,7 +280,7 @@
         }
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
-      "id": 3,
+      "id": 4,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -285,11 +328,11 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "ethereum_chain_head_number{network=\"mainnet\"}",
+          "expr": "ethereum_chain_head_number",
           "refId": "A"
         }
       ],
-      "title": "Chain Head Block",
+      "title": "Chain Head",
       "type": "stat"
     },
     {
@@ -312,18 +355,31 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "sum(deployment_head{network=\"mainnet\"})",
+          "expr": "max(deployment_head)",
           "refId": "A"
         }
       ],
-      "title": "Subgraph Head Block",
+      "title": "Subgraph Head",
       "type": "stat"
     },
     {
       "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-      "fieldConfig": { "defaults": { "unit": "short" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "orange", "value": 1000 },
+              { "color": "red", "value": 10000 }
+            ]
+          }
+        }
+      },
       "gridPos": { "h": 4, "w": 4, "x": 8, "y": 14 },
-      "id": 17,
+      "id": 12,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -339,7 +395,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "ethereum_chain_head_number{network=\"mainnet\"} - sum(deployment_head{network=\"mainnet\"})",
+          "expr": "ethereum_chain_head_number - max(deployment_head)",
           "refId": "A"
         }
       ],
@@ -381,7 +437,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "(sum(deployment_head{network=\"mainnet\"}) / ethereum_chain_head_number{network=\"mainnet\"}) * 100",
+          "expr": "(max(deployment_head) / ethereum_chain_head_number) * 100",
           "refId": "A"
         }
       ],
@@ -390,8 +446,48 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-      "fieldConfig": { "defaults": { "unit": "short" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 3600 },
+              { "color": "orange", "value": 86400 },
+              { "color": "red", "value": 604800 }
+            ]
+          }
+        }
+      },
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 14 },
+      "id": 18,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "(ethereum_chain_head_number - max(deployment_head)) / (max(rate(deployment_head[1h])) > 0 or vector(0.001))",
+          "refId": "A"
+        }
+      ],
+      "title": "ETA",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 14 },
       "id": 13,
       "options": {
         "colorMode": "value",
@@ -437,12 +533,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "rate(deployment_handler_execution_time_count[5m])",
-          "legendFormat": "{{deployment}} - {{handler}}",
+          "expr": "rate(deployment_head[5m])",
+          "legendFormat": "{{deployment}}",
           "refId": "A"
         }
       ],
-      "title": "Handler Execution Rate",
+      "title": "Indexing Rate (blocks/s)",
       "type": "timeseries"
     },
     {
@@ -451,7 +547,7 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "drawStyle": "line", "fillOpacity": 10 },
-          "unit": "short"
+          "unit": "reqps"
         }
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
@@ -467,7 +563,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "rate(query_execution_time_count[5m])",
+          "expr": "sum(rate(query_parsing_time_count[5m])) by (deployment)",
           "legendFormat": "{{deployment}}",
           "refId": "A"
         }
@@ -480,7 +576,7 @@
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
       "id": 102,
       "panels": [],
-      "title": "💾 System",
+      "title": "💾 System Resources",
       "type": "row"
     },
     {
@@ -492,7 +588,7 @@
           "unit": "bytes"
         }
       },
-      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 27 },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 27 },
       "id": 20,
       "options": {
         "legend": {
@@ -505,12 +601,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "process_resident_memory_bytes",
-          "legendFormat": "{{job}}",
+          "expr": "container_memory_usage_bytes{name=~\"subgraphs.*\"}",
+          "legendFormat": "{{name}}",
           "refId": "A"
         }
       ],
-      "title": "Memory Usage",
+      "title": "Container Memory",
       "type": "timeseries"
     },
     {
@@ -522,7 +618,7 @@
           "unit": "percentunit"
         }
       },
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 27 },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 27 },
       "id": 21,
       "options": {
         "legend": {
@@ -535,13 +631,223 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "rate(process_cpu_seconds_total[5m])",
-          "legendFormat": "{{job}}",
+          "expr": "rate(container_cpu_usage_seconds_total{name=~\"subgraphs.*\"}[5m])",
+          "legendFormat": "{{name}}",
           "refId": "A"
         }
       ],
-      "title": "CPU Usage",
+      "title": "Container CPU",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "Bps"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 27 },
+      "id": 22,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "rate(container_network_receive_bytes_total{name=~\"subgraphs.*\"}[5m])",
+          "legendFormat": "{{name}} RX",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "rate(container_network_transmit_bytes_total{name=~\"subgraphs.*\"}[5m])",
+          "legendFormat": "{{name}} TX",
+          "refId": "B"
+        }
+      ],
+      "title": "Container Network I/O",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 33 },
+      "id": 23,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "container_memory_usage_bytes{name=~\".*graph-node.*\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "Graph Node Memory",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "decimals": 2 }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 33 },
+      "id": 24,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "rate(container_cpu_usage_seconds_total{name=~\".*graph-node.*\"}[5m])",
+          "refId": "A"
+        }
+      ],
+      "title": "Graph Node CPU",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 33 },
+      "id": 25,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "sum(container_memory_usage_bytes{name=~\"subgraphs.*\"})",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Memory",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "decimals": 2 }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 33 },
+      "id": 26,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"subgraphs.*\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Total CPU",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": { "unit": "Bps" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 33 },
+      "id": 27,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "sum(rate(container_network_receive_bytes_total{name=~\"subgraphs.*\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Network RX",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": { "unit": "Bps" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 33 },
+      "id": 28,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "sum(rate(container_network_transmit_bytes_total{name=~\"subgraphs.*\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Network TX",
+      "type": "stat"
     }
   ],
   "schemaVersion": 39,
