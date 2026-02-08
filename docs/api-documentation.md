@@ -24,16 +24,16 @@ All protected endpoints require an API key passed via the `X-API-Key` HTTP heade
 X-API-Key: your_api_key_here
 ```
 
-| Endpoint        | Auth Required |
-| --------------- | ------------- |
-| `/health`       | ❌ No         |
-| `/subgraphs/*`  | ✅ Yes        |
-| `/graphql`      | ✅ Yes        |
-| `/prometheus/*` | ✅ Yes        |
-| `/rpc-metrics`  | ✅ Yes        |
-| `/metrics`      | ✅ Yes        |
-| `/deploy`       | ✅ Yes        |
-| `/ipfs/*`       | ✅ Yes        |
+| Endpoint        | Auth Required             |
+| --------------- | ------------------------- |
+| `/health`       | ❌ No                     |
+| `/subgraphs/*`  | ✅ Yes (X-API-Key header) |
+| `/graphql`      | ✅ Yes (X-API-Key header) |
+| `/prometheus/*` | ✅ Yes (X-API-Key header) |
+| `/rpc-metrics`  | ✅ Yes (X-API-Key header) |
+| `/metrics`      | ✅ Yes (X-API-Key header) |
+| `/deploy/<key>` | ✅ Yes (key in URL path)  |
+| `/ipfs/<key>`   | ✅ Yes (key in URL path)  |
 
 ---
 
