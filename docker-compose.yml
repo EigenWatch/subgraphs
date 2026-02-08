@@ -61,6 +61,7 @@ services:
       - graph-node
       - prometheus
       - rpc-proxy
+      - loki
     environment:
       GRAPHQL_API_KEY: ${GRAPHQL_API_KEY}
     restart: unless-stopped
@@ -90,8 +91,9 @@ services:
 
   loki:
     build: ./monitoring/loki
-    ports:
-      - "3100:3100"
+    # No public ports - access via nginx at /loki/ with API key
+    expose:
+      - "3100"
     restart: unless-stopped
 
   promtail:

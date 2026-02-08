@@ -79,6 +79,20 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
         }
 
+        # Loki API (protected - for external Grafana)
+        location /loki/ {
+            if ($http_x_api_key != "${GRAPHQL_API_KEY}") {
+                return 401 '{"error": "Unauthorized - Invalid or missing API key"}';
+            }
+
+            # Strip /loki prefix before proxying
+            rewrite ^/loki/(.*) /$1 break;
+            proxy_pass http://loki:3100;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
         # RPC Proxy Metrics (protected - for external Grafana)
         location = /rpc-metrics {
             if ($http_x_api_key != "${GRAPHQL_API_KEY}") {
