@@ -80,12 +80,13 @@ http {
         }
 
         # RPC Proxy Metrics (protected - for external Grafana)
-        location /rpc-metrics {
+        location = /rpc-metrics {
             if ($http_x_api_key != "${GRAPHQL_API_KEY}") {
                 return 401 '{"error": "Unauthorized - Invalid or missing API key"}';
             }
 
-            proxy_pass http://rpc-proxy:3000/metrics;
+            rewrite ^/rpc-metrics$ /metrics break;
+            proxy_pass http://rpc-proxy:3000;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
         }
@@ -117,19 +118,16 @@ http {
         # Usage: https://subgraph.eigenwatch.xyz/ipfs/<DEPLOY_KEY>/api/v0/add
         location ~ ^/ipfs/([^/]+)(/.*)?$ {
             set $deploy_key $1;
-            set $ipfs_path $2;
             
             if ($deploy_key != "${GRAPHQL_API_KEY}") {
                 return 401 '{"error": "Unauthorized - Invalid deploy key"}';
             }
 
-            # Default to root if no path
-            set $final_path "/";
-            if ($ipfs_path != "") {
-                set $final_path $ipfs_path;
-            }
+            # Strip /ipfs/<key> prefix, keeping the rest of the path
+            rewrite ^/ipfs/[^/]+(/.*)?$ $1 break;
+            rewrite ^/ipfs/[^/]+$ / break;
 
-            proxy_pass http://ipfs:5001$final_path;
+            proxy_pass http://ipfs:5001;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
             
