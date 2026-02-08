@@ -99,8 +99,11 @@ http {
                 return 401 '{"error": "Unauthorized - Invalid deploy key"}';
             }
 
-            # Proxy to Graph Node JSON-RPC admin API (always to root path)
-            proxy_pass http://graph-node:8020/;
+            # Rewrite path to strip deploy key prefix
+            rewrite ^/deploy/[^/]+/?(.*)$ /$1 break;
+
+            # Proxy to Graph Node JSON-RPC admin API
+            proxy_pass http://graph-node:8020;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
