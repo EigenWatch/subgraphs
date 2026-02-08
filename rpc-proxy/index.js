@@ -95,6 +95,31 @@ const PROVIDERS = [
     unwrap: false,
     weight: 20, // 20% of traffic during load balance mode
   },
+  // Public free RPCs as last-resort fallbacks (weight 0 = fallback only)
+  {
+    name: "ankr",
+    url: "https://rpc.ankr.com/eth",
+    apiKey: null,
+    headers: () => ({}),
+    unwrap: false,
+    weight: 0,
+  },
+  {
+    name: "publicnode",
+    url: "https://ethereum-rpc.publicnode.com",
+    apiKey: null,
+    headers: () => ({}),
+    unwrap: false,
+    weight: 0,
+  },
+  {
+    name: "llamarpc",
+    url: "https://eth.llamarpc.com",
+    apiKey: null,
+    headers: () => ({}),
+    unwrap: false,
+    weight: 0,
+  },
 ];
 
 const PORT = process.env.PORT || 3000;
