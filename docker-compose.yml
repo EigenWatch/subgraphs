@@ -4,6 +4,8 @@ services:
     environment:
       RPC_GATEWAY_URL: ${RPC_GATEWAY_URL:-https://gateway.thebuidl.xyz/query}
       RPC_API_KEY: ${RPC_API_KEY}
+      ALCHEMY_RPC_URL: ${ALCHEMY_RPC_URL:-}
+      INFURA_RPC_URL: ${INFURA_RPC_URL:-}
       PORT: 3000
   graph-node:
     image: graphprotocol/graph-node
