@@ -352,11 +352,11 @@ dataSources:
         # CRITICAL: Pod share updates (includes slashing effects)
         - event: PodSharesUpdated(indexed address,int256)
           handler: handlePodSharesUpdated
-        - event: NewTotalShares(indexed address,int256)volatility_metrics
+        - event: NewTotalShares(indexed address,int256)
           handler: handleNewTotalShares
 
         # Withdrawals
-        - event: BeaconChainETHWithdrawalCompleted(indexed address,uint256,uint96,address,address,bytes32)volatility_metrics
+        - event: BeaconChainETHWithdrawalCompleted(indexed address,uint256,uint96,address,address,bytes32)
           handler: handleBeaconChainETHWithdrawalCompleted
 
         # CRITICAL: Beacon chain slashing (direct validator penalties)

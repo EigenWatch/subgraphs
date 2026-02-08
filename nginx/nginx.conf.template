@@ -116,16 +116,16 @@ http {
 
         # IPFS API (key in URL path for graph-cli compatibility)
         # Usage: https://subgraph.eigenwatch.xyz/ipfs/<DEPLOY_KEY>/api/v0/add
-        location ~ ^/ipfs/([^/]+)(/.*)?$ {
+        location ~ ^/ipfs/([^/]+)(/.*)$ {
             set $deploy_key $1;
+            set $ipfs_path $2;
             
             if ($deploy_key != "${GRAPHQL_API_KEY}") {
                 return 401 '{"error": "Unauthorized - Invalid deploy key"}';
             }
 
-            # Strip /ipfs/<key> prefix, keeping the rest of the path
-            rewrite ^/ipfs/[^/]+(/.*)?$ $1 break;
-            rewrite ^/ipfs/[^/]+$ / break;
+            # Rewrite to the IPFS path
+            rewrite ^/ipfs/[^/]+(/.*)$ $1 break;
 
             proxy_pass http://ipfs:5001;
             proxy_http_version 1.1;
