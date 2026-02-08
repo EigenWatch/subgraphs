@@ -328,7 +328,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "ethereum_chain_head_number",
+          "expr": "chain_head_cache_latest_block",
           "refId": "A"
         }
       ],
@@ -395,7 +395,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "ethereum_chain_head_number - max(deployment_head)",
+          "expr": "chain_head_cache_latest_block - max(deployment_head)",
           "refId": "A"
         }
       ],
@@ -437,7 +437,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "(max(deployment_head) / ethereum_chain_head_number) * 100",
+          "expr": "(max(deployment_head) / chain_head_cache_latest_block) * 100",
           "refId": "A"
         }
       ],
@@ -477,7 +477,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "(ethereum_chain_head_number - max(deployment_head)) / (max(rate(deployment_head[1h])) > 0 or vector(0.001))",
+          "expr": "(chain_head_cache_latest_block - max(deployment_head)) / (max(rate(deployment_head[1h])) > 0 or vector(0.001))",
           "refId": "A"
         }
       ],
@@ -601,7 +601,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "container_memory_usage_bytes{name=~\"subgraphs.*\"}",
+          "expr": "container_memory_usage_bytes{name=~\".*(graph-node|ipfs|nginx|prometheus|postgres|rpc-proxy|cadvisor).*\"}",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -631,7 +631,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "rate(container_cpu_usage_seconds_total{name=~\"subgraphs.*\"}[5m])",
+          "expr": "rate(container_cpu_usage_seconds_total{name=~\".*(graph-node|ipfs|nginx|prometheus|postgres|rpc-proxy|cadvisor).*\"}[5m])",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -661,13 +661,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "rate(container_network_receive_bytes_total{name=~\"subgraphs.*\"}[5m])",
+          "expr": "rate(container_network_receive_bytes_total{name=~\".*(graph-node|ipfs|nginx|prometheus|postgres|rpc-proxy|cadvisor).*\"}[5m])",
           "legendFormat": "{{name}} RX",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "rate(container_network_transmit_bytes_total{name=~\"subgraphs.*\"}[5m])",
+          "expr": "rate(container_network_transmit_bytes_total{name=~\".*(graph-node|ipfs|nginx|prometheus|postgres|rpc-proxy|cadvisor).*\"}[5m])",
           "legendFormat": "{{name}} TX",
           "refId": "B"
         }
@@ -755,7 +755,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "sum(container_memory_usage_bytes{name=~\"subgraphs.*\"})",
+          "expr": "sum(container_memory_usage_bytes{name=~\".*(graph-node|ipfs|nginx|prometheus|postgres|rpc-proxy|cadvisor).*\"})",
           "refId": "A"
         }
       ],
@@ -784,7 +784,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"subgraphs.*\"}[5m]))",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\".*(graph-node|ipfs|nginx|prometheus|postgres|rpc-proxy|cadvisor).*\"}[5m]))",
           "refId": "A"
         }
       ],
@@ -813,7 +813,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "sum(rate(container_network_receive_bytes_total{name=~\"subgraphs.*\"}[5m]))",
+          "expr": "sum(rate(container_network_receive_bytes_total{name=~\".*(graph-node|ipfs|nginx|prometheus|postgres|rpc-proxy|cadvisor).*\"}[5m]))",
           "refId": "A"
         }
       ],
@@ -842,7 +842,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
-          "expr": "sum(rate(container_network_transmit_bytes_total{name=~\"subgraphs.*\"}[5m]))",
+          "expr": "sum(rate(container_network_transmit_bytes_total{name=~\".*(graph-node|ipfs|nginx|prometheus|postgres|rpc-proxy|cadvisor).*\"}[5m]))",
           "refId": "A"
         }
       ],

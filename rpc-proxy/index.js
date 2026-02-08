@@ -62,7 +62,7 @@ const PROVIDERS = [
     apiKey: process.env.RPC_API_KEY,
     headers: (apiKey) => ({ "x-api-key": apiKey }),
     unwrap: true,
-    weight: 50, // 40% of traffic during load balance mode
+    weight: 40, // 40% of traffic during load balance mode
   },
   {
     name: "alchemy",
@@ -70,23 +70,23 @@ const PROVIDERS = [
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
-    weight: 25, // 20% of traffic during load balance mode
+    weight: 20, // 20% of traffic during load balance mode
   },
-  // {
-  //   name: "alchemy2",
-  //   url: process.env.ALCHEMY_RPC_URL_2,
-  //   apiKey: null,
-  //   headers: () => ({}),
-  //   unwrap: false,
-  //   weight: 20, // 20% of traffic during load balance mode
-  // },
+  {
+    name: "alchemy2",
+    url: process.env.ALCHEMY_RPC_URL_2,
+    apiKey: null,
+    headers: () => ({}),
+    unwrap: false,
+    weight: 20, // 20% of traffic during load balance mode
+  },
   {
     name: "infura",
     url: process.env.INFURA_RPC_URL,
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
-    weight: 25, // 20% of traffic during load balance mode
+    weight: 20, // 20% of traffic during load balance mode
   },
 ];
 
