@@ -72,18 +72,12 @@ services:
       GRAPHQL_API_KEY: ${GRAPHQL_API_KEY}
     restart: unless-stopped
   prometheus:
-    image: prom/prometheus:v2.45.0
+    build: ./monitoring/prometheus
     # No public ports - access via nginx at /prometheus/ with API key
     expose:
       - "9090"
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
-      - "--web.console.templates=/usr/share/prometheus/consoles"
     depends_on:
       - rpc-proxy
       - graph-node
