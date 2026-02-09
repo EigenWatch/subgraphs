@@ -210,14 +210,15 @@ const PROVIDERS = [
     backfillWeight: 50,
     normalWeight: 12,
   },
-  // Public free RPCs as last-resort fallbacks
+  // Public free RPCs - only used in normal mode (NOT during backfill)
+  // These are full nodes, not archive nodes, so they cannot serve historical data reliably
   {
     name: "ankr",
     url: "https://rpc.ankr.com/eth",
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
-    backfillRole: "fallback",
+    backfillRole: "none",
     backfillWeight: 0,
     normalWeight: 0,
   },
@@ -227,7 +228,7 @@ const PROVIDERS = [
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
-    backfillRole: "fallback",
+    backfillRole: "none",
     backfillWeight: 0,
     normalWeight: 0,
   },
@@ -237,7 +238,7 @@ const PROVIDERS = [
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
-    backfillRole: "fallback",
+    backfillRole: "none",
     backfillWeight: 0,
     normalWeight: 0,
   },
@@ -274,11 +275,6 @@ function getBackfillProviders(role) {
   });
 }
 
-// Get fallback providers (public RPCs)
-function getFallbackProviders() {
-  return getActiveProviders().filter((p) => p.backfillRole === "fallback");
-}
-
 // Select provider based on weights
 function selectWeightedProvider(providers, weightKey) {
   if (providers.length === 0) return null;
@@ -310,24 +306,23 @@ function getProviderOrder(method) {
   }
 
   // Backfill mode: route by method
+  // Public RPCs are excluded entirely during backfill (not archive nodes)
   if (method === "eth_getLogs") {
     // Primary: Infura providers (exclude those over daily limit)
     const logProviders = getBackfillProviders("logs").filter(
       (p) => !isProviderOverDailyLimit(p),
     );
-    // Fallback: Alchemy, then public RPCs
+    // Fallback: Alchemy (archive nodes, just limited block range for getLogs)
     const generalProviders = getBackfillProviders("general");
-    const fallbacks = getFallbackProviders();
-    return [...logProviders, ...generalProviders, ...fallbacks];
+    return [...logProviders, ...generalProviders];
   } else {
     // Primary: Alchemy providers
     const generalProviders = getBackfillProviders("general");
-    // Fallback: Infura (they can handle non-log calls too), then public RPCs
+    // Fallback: Infura (they can handle non-log calls too)
     const logProviders = getBackfillProviders("logs").filter(
       (p) => !isProviderOverDailyLimit(p),
     );
-    const fallbacks = getFallbackProviders();
-    return [...generalProviders, ...logProviders, ...fallbacks];
+    return [...generalProviders, ...logProviders];
   }
 }
 

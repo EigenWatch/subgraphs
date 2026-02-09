@@ -6,7 +6,7 @@
     "build": "graph build",
     "deploy": "graph deploy --node https://api.studio.thegraph.com/deploy/ eigenwatch-ethereum",
     "create:remote": "dotenv -- bash -c 'graph create --node https://subgraph.eigenwatch.xyz/deploy/$GRAPHQL_API_KEY eigenwatch-ethereum'",
-    "deploy:remote": "dotenv -- bash -c 'graph deploy --node https://subgraph.eigenwatch.xyz/deploy/$GRAPHQL_API_KEY --ipfs https://subgraph.eigenwatch.xyz/ipfs/$GRAPHQL_API_KEY eigenwatch-ethereum --version-label ${VERSION:-v0.0.1}'",
+    "deploy:remote": "dotenv -- bash -c 'graph deploy --node https://subgraph.eigenwatch.xyz/deploy/$GRAPHQL_API_KEY --ipfs https://subgraph.eigenwatch.xyz/ipfs/$GRAPHQL_API_KEY eigenwatch-ethereum --version-label ${VERSION:-v0.0.2}'",
     "test": "graph test"
   },
   "dependencies": {
