@@ -98,6 +98,62 @@ const INFURA_CREDIT_COSTS = {
 const INFURA_DAILY_CREDIT_LIMIT = 3_000_000;
 const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours in ms
 
+// Infura throughput rate limiting (token bucket)
+// Free tier allows 500 credits/sec; we target 400/sec for safety
+const INFURA_CREDITS_PER_SECOND = 400;
+const INFURA_BUCKET_SIZE = 500; // max burst size in credits
+
+// Per-provider token buckets for throughput limiting
+// Each bucket: { tokens, lastRefill }
+const providerBuckets = {};
+
+function getOrCreateBucket(providerName) {
+  if (!providerBuckets[providerName]) {
+    providerBuckets[providerName] = {
+      tokens: INFURA_BUCKET_SIZE,
+      lastRefill: Date.now(),
+    };
+  }
+  return providerBuckets[providerName];
+}
+
+function refillBucket(bucket) {
+  const now = Date.now();
+  const elapsed = (now - bucket.lastRefill) / 1000; // seconds
+  bucket.tokens = Math.min(
+    INFURA_BUCKET_SIZE,
+    bucket.tokens + elapsed * INFURA_CREDITS_PER_SECOND,
+  );
+  bucket.lastRefill = now;
+}
+
+// Returns ms to wait before sending a request costing `creditCost` to this provider.
+// Returns 0 if the request can be sent immediately.
+function getThrottleDelay(providerName, creditCost) {
+  const bucket = getOrCreateBucket(providerName);
+  refillBucket(bucket);
+
+  if (bucket.tokens >= creditCost) {
+    bucket.tokens -= creditCost;
+    return 0;
+  }
+
+  // Calculate how long to wait for enough tokens to accumulate
+  const deficit = creditCost - bucket.tokens;
+  const waitMs = Math.ceil((deficit / INFURA_CREDITS_PER_SECOND) * 1000);
+  // Reserve: set tokens to negative so concurrent requests also wait
+  bucket.tokens -= creditCost;
+  return waitMs;
+}
+
+const throttleDelayHistogram = new client.Histogram({
+  name: "rpc_throttle_delay_seconds",
+  help: "Time spent waiting due to rate limit throttling",
+  labelNames: ["provider"],
+  buckets: [0, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+  registers: [register],
+});
+
 // Per-provider rolling 24h credit tracking
 // Each provider stores an array of { timestamp, cost } entries
 const providerCredits = {};
@@ -361,6 +417,20 @@ async function makeRequest(provider, body, method) {
     ...provider.headers(provider.apiKey),
   };
 
+  // Throttle Infura requests to stay under 500 credits/sec
+  if (isInfuraProvider(provider)) {
+    const creditCost = INFURA_CREDIT_COSTS[method] || INFURA_CREDIT_COSTS.default;
+    const delayMs = getThrottleDelay(provider.name, creditCost);
+    if (delayMs > 0) {
+      throttleDelayHistogram.observe({ provider: provider.name }, delayMs / 1000);
+      fastify.log.debug(
+        { provider: provider.name, method, delayMs, creditCost },
+        "Throttling request to stay within rate limit",
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
   const timer = requestDuration.startTimer({ provider: provider.name, method });
 
   try {
@@ -512,10 +582,14 @@ fastify.get("/health", async () => {
   const infuraProviders = providers.filter(isInfuraProvider);
   const creditInfo = {};
   for (const p of infuraProviders) {
+    const bucket = getOrCreateBucket(p.name);
+    refillBucket(bucket);
     creditInfo[p.name] = {
       creditsUsed: getCreditsConsumed(p.name),
       dailyLimit: INFURA_DAILY_CREDIT_LIMIT,
       percentUsed: ((getCreditsConsumed(p.name) / INFURA_DAILY_CREDIT_LIMIT) * 100).toFixed(1) + "%",
+      bucketTokens: Math.round(bucket.tokens),
+      rateLimit: `${INFURA_CREDITS_PER_SECOND} credits/sec`,
     };
   }
 
