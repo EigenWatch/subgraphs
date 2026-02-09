@@ -24,14 +24,6 @@ services:
       - ipfs
       - rpc-proxy
       - postgres
-    volumes:
-      - ./config/graph-node-config.toml:/etc/graph-node/config.toml:ro
-    command:
-      - "start"
-      - "--config"
-      - "/etc/graph-node/config.toml"
-      - "--node-id"
-      - "block_ingestor_node"
     environment:
       postgres_host: ${POSTGRES_HOST}
       postgres_port: ${POSTGRES_PORT:-5432}
@@ -39,8 +31,9 @@ services:
       postgres_pass: ${POSTGRES_PASSWORD}
       postgres_db: ${POSTGRES_DB}
       ipfs: "ipfs:5001"
+      ethereum: "mainnet:http://rpc-proxy:3000"
       GRAPH_LOG: info
-      # Max block range for eth_getLogs requests (compatible with Infura free tier)
+      # Max block range for eth_getLogs requests (compatible with Infura free tier ~5000 block range)
       GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE: 5000
       GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE: 5000
       # Query limits (defaults: 1000/5000)
