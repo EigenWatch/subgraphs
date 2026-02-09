@@ -24,7 +24,7 @@
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "id": 100,
       "panels": [],
-      "title": "📡 RPC Proxy",
+      "title": "RPC Proxy",
       "type": "row"
     },
     {
@@ -32,14 +32,14 @@
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "options": { "0": { "text": "Fallback" } }, "type": "value" },
-            { "options": { "1": { "text": "Load Balance" } }, "type": "value" }
+            { "options": { "0": { "text": "Normal" } }, "type": "value" },
+            { "options": { "1": { "text": "Backfill" } }, "type": "value" }
           ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "color": "blue", "value": null },
-              { "color": "green", "value": 1 }
+              { "color": "orange", "value": 1 }
             ]
           }
         }
@@ -76,15 +76,20 @@
             { "options": { "1": { "text": "thebuidl" } }, "type": "value" },
             { "options": { "2": { "text": "alchemy" } }, "type": "value" },
             { "options": { "3": { "text": "alchemy2" } }, "type": "value" },
-            { "options": { "4": { "text": "infura" } }, "type": "value" }
+            { "options": { "4": { "text": "alchemy3" } }, "type": "value" },
+            { "options": { "5": { "text": "infura" } }, "type": "value" },
+            { "options": { "6": { "text": "infura2" } }, "type": "value" },
+            { "options": { "7": { "text": "ankr" } }, "type": "value" },
+            { "options": { "8": { "text": "publicnode" } }, "type": "value" },
+            { "options": { "9": { "text": "llamarpc" } }, "type": "value" }
           ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
               { "color": "yellow", "value": 2 },
-              { "color": "orange", "value": 3 },
-              { "color": "red", "value": 4 }
+              { "color": "orange", "value": 4 },
+              { "color": "red", "value": 7 }
             ]
           }
         }
@@ -342,15 +347,307 @@
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "id": 104,
+      "panels": [],
+      "title": "Method Routing & Infura Credits",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineWidth": 1,
+            "stacking": { "mode": "normal" }
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "id": 40,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "sum(rate(rpc_method_routing_total{method=\"eth_getLogs\"}[5m])) by (provider)",
+          "legendFormat": "{{provider}}",
+          "refId": "A"
+        }
+      ],
+      "title": "eth_getLogs Routing by Provider",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineWidth": 1,
+            "stacking": { "mode": "normal" }
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "id": 41,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "sum(rate(rpc_method_routing_total{method!=\"eth_getLogs\"}[5m])) by (provider)",
+          "legendFormat": "{{provider}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Other RPC Routing by Provider",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2250000 },
+              { "color": "red", "value": 3000000 }
+            ]
+          },
+          "max": 3000000,
+          "min": 0
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 22 },
+      "id": 42,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "rpc_infura_credits_consumed{provider=\"infura\"}",
+          "legendFormat": "infura",
+          "refId": "A"
+        }
+      ],
+      "title": "Infura Credits (infura)",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2250000 },
+              { "color": "red", "value": 3000000 }
+            ]
+          },
+          "max": 3000000,
+          "min": 0
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 22 },
+      "id": 43,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "rpc_infura_credits_consumed{provider=\"infura2\"}",
+          "legendFormat": "infura2",
+          "refId": "A"
+        }
+      ],
+      "title": "Infura Credits (infura2)",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "red", "mode": "fixed" },
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 22 },
+      "id": 44,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "sum(increase(rpc_rate_limit_hits_total[1h])) by (provider, type)",
+          "legendFormat": "{{provider}} ({{type}})",
+          "refId": "A"
+        }
+      ],
+      "title": "Rate Limit Hits (1h)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "stacking": { "mode": "none" }
+          }
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 22 },
+      "id": 45,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "sum(rate(rpc_method_routing_total[5m])) by (route_type)",
+          "legendFormat": "{{route_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Routing Type Distribution",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "id": 46,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "sum(rate(rpc_provider_errors_total[5m])) by (provider, error_type)",
+          "legendFormat": "{{provider}} ({{error_type}})",
+          "refId": "A"
+        }
+      ],
+      "title": "Errors by Provider & Type",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "id": 47,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+          "expr": "sum(rate(rpc_fallbacks_total[5m])) by (from_provider, to_provider)",
+          "legendFormat": "{{from_provider}} -> {{to_provider}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Fallback Chains",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
       "id": 101,
       "panels": [],
-      "title": "📊 Graph Node",
+      "title": "Graph Node",
       "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
       "fieldConfig": { "defaults": { "unit": "short" } },
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 14 },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 37 },
       "id": 10,
       "options": {
         "colorMode": "value",
@@ -377,7 +674,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
       "fieldConfig": { "defaults": { "unit": "short" } },
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 14 },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 37 },
       "id": 11,
       "options": {
         "colorMode": "value",
@@ -417,7 +714,7 @@
           }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 14 },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 37 },
       "id": 12,
       "options": {
         "colorMode": "value",
@@ -459,7 +756,7 @@
           "unit": "percent"
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 14 },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 37 },
       "id": 16,
       "options": {
         "minVizHeight": 75,
@@ -499,7 +796,7 @@
           }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 14 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 37 },
       "id": 18,
       "options": {
         "colorMode": "value",
@@ -526,7 +823,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
       "fieldConfig": { "defaults": { "unit": "short" } },
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 14 },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 37 },
       "id": 13,
       "options": {
         "colorMode": "value",
@@ -559,7 +856,7 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
       "id": 14,
       "options": {
         "legend": {
@@ -589,7 +886,7 @@
           "unit": "reqps"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
       "id": 15,
       "options": {
         "legend": {
@@ -612,10 +909,10 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 49 },
       "id": 102,
       "panels": [],
-      "title": "💾 System Resources",
+      "title": "System Resources",
       "type": "row"
     },
     {
@@ -623,11 +920,19 @@
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": { "mode": "none" }
+          },
           "unit": "bytes"
         }
       },
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 27 },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 50 },
       "id": 20,
       "options": {
         "legend": {
@@ -657,7 +962,7 @@
           "unit": "percentunit"
         }
       },
-      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 27 },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 50 },
       "id": 21,
       "options": {
         "legend": {
@@ -687,7 +992,7 @@
           "unit": "Bps"
         }
       },
-      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 27 },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 50 },
       "id": 22,
       "options": {
         "legend": {
@@ -719,7 +1024,7 @@
       "fieldConfig": {
         "defaults": { "unit": "bytes" }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 33 },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 56 },
       "id": 23,
       "options": {
         "colorMode": "value",
@@ -748,7 +1053,7 @@
       "fieldConfig": {
         "defaults": { "unit": "percentunit", "decimals": 2 }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 33 },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 56 },
       "id": 24,
       "options": {
         "colorMode": "value",
@@ -777,7 +1082,7 @@
       "fieldConfig": {
         "defaults": { "unit": "bytes" }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 33 },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 56 },
       "id": 25,
       "options": {
         "colorMode": "value",
@@ -806,7 +1111,7 @@
       "fieldConfig": {
         "defaults": { "unit": "percentunit", "decimals": 2 }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 33 },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 56 },
       "id": 26,
       "options": {
         "colorMode": "value",
@@ -835,7 +1140,7 @@
       "fieldConfig": {
         "defaults": { "unit": "Bps" }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 33 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 56 },
       "id": 27,
       "options": {
         "colorMode": "value",
@@ -864,7 +1169,7 @@
       "fieldConfig": {
         "defaults": { "unit": "Bps" }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 33 },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 56 },
       "id": 28,
       "options": {
         "colorMode": "value",
@@ -890,16 +1195,62 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 60 },
       "id": 103,
       "panels": [],
-      "title": "📜 Logs",
+      "title": "Logs",
       "type": "row"
     },
     {
       "datasource": { "type": "loki", "uid": "${loki_ds}" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 39 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 61 },
       "id": 30,
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${loki_ds}" },
+          "expr": "{job=~\"$log_service\"} |~ \"$log_search\"",
+          "refId": "A"
+        }
+      ],
+      "title": "All Logs (filtered by service & search)",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${loki_ds}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 69 },
+      "id": 31,
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${loki_ds}" },
+          "expr": "{job=~\"$log_service\"} | level =~ \"error|err|ERROR|fatal|FATAL|panic|PANIC\" or {job=~\"$log_service\"} |~ \"(?i)(error|failed|failure|panic|fatal|exception|timeout|refused|denied|critical)\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Errors & Warnings",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${loki_ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 77 },
+      "id": 32,
       "options": {
         "showTime": true,
         "showLabels": false,
@@ -912,12 +1263,114 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${loki_ds}" },
-          "expr": "{job=~\"graph-node|rpc-proxy\"}",
+          "expr": "{job=\"graph-node\"} |~ \"$log_search\"",
           "refId": "A"
         }
       ],
-      "title": "Container Logs",
+      "title": "Graph Node Logs",
       "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${loki_ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 77 },
+      "id": 33,
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${loki_ds}" },
+          "expr": "{job=\"rpc-proxy\"} |~ \"$log_search\"",
+          "refId": "A"
+        }
+      ],
+      "title": "RPC Proxy Logs",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${loki_ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 85 },
+      "id": 34,
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${loki_ds}" },
+          "expr": "{job=\"postgres\"} |~ \"$log_search\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Postgres Logs",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${loki_ds}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 85 },
+      "id": 35,
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${loki_ds}" },
+          "expr": "{job=\"nginx\"} |~ \"$log_search\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Nginx Logs",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${loki_ds}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 50,
+            "stacking": { "mode": "normal" }
+          }
+        }
+      },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 93 },
+      "id": 36,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${loki_ds}" },
+          "expr": "sum by (job) (count_over_time({job=~\"graph-node|rpc-proxy|postgres|nginx\"} |~ \"(?i)(error|failed|failure|panic|fatal|exception)\" [5m]))",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Error Rate by Service (5m buckets)",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,
@@ -959,12 +1412,50 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Log Service",
+        "multi": true,
+        "name": "log_service",
+        "options": [
+          { "selected": false, "text": "graph-node", "value": "graph-node" },
+          { "selected": false, "text": "rpc-proxy", "value": "rpc-proxy" },
+          { "selected": false, "text": "postgres", "value": "postgres" },
+          { "selected": false, "text": "nginx", "value": "nginx" },
+          { "selected": false, "text": "ipfs", "value": "ipfs" },
+          { "selected": false, "text": "loki", "value": "loki" },
+          { "selected": false, "text": "promtail", "value": "promtail" }
+        ],
+        "query": "graph-node,rpc-proxy,postgres,nginx,ipfs,loki,promtail",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "hide": 0,
+        "label": "Log Search",
+        "name": "log_search",
+        "options": [],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
       }
     ]
   },
   "time": { "from": "now-6h", "to": "now" },
   "title": "EigenWatch Subgraph",
   "uid": "eigenwatch-subgraph",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

@@ -22,3 +22,49 @@ scrape_configs:
       - source_labels:
           ["__meta_docker_container_label_com_docker_compose_service"]
         target_label: "job"
+    pipeline_stages:
+      # Extract log level from graph-node logs (format: "LEVEL ... message")
+      - match:
+          selector: '{job="graph-node"}'
+          stages:
+            - regex:
+                expression: '(?P<level>TRACE|DEBUG|INFO|WARN|ERROR|FATAL|CRIT)'
+            - labels:
+                level:
+      # Extract log level from rpc-proxy JSON logs (Fastify format: {"level":30,...})
+      - match:
+          selector: '{job="rpc-proxy"}'
+          stages:
+            - json:
+                expressions:
+                  level_num: level
+                  msg: msg
+            - template:
+                source: level
+                template: '{{ if eq .level_num "10" }}trace{{ else if eq .level_num "20" }}debug{{ else if eq .level_num "30" }}info{{ else if eq .level_num "40" }}warn{{ else if eq .level_num "50" }}error{{ else if eq .level_num "60" }}fatal{{ else }}unknown{{ end }}'
+            - labels:
+                level:
+      # Extract log level from postgres logs
+      - match:
+          selector: '{job="postgres"}'
+          stages:
+            - regex:
+                expression: '(?P<level>LOG|WARNING|ERROR|FATAL|PANIC|NOTICE|INFO|DEBUG)'
+            - labels:
+                level:
+      # Extract log level from nginx access/error logs
+      - match:
+          selector: '{job="nginx"}'
+          stages:
+            - regex:
+                expression: '\[(?P<level>emerg|alert|crit|error|warn|notice|info|debug)\]'
+            - labels:
+                level:
+      # Generic fallback: detect errors in any log line
+      - match:
+          selector: '{level=""}'
+          stages:
+            - regex:
+                expression: '(?i)(?P<level>error|fatal|panic|critical)'
+            - labels:
+                level:

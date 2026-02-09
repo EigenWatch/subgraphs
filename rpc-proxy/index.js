@@ -60,8 +60,95 @@ const blocksBehind = new client.Gauge({
   registers: [register],
 });
 
-// Provider configuration with weights for load balancing
-// During backfill: thebuidl gets 40%, others split 60%
+const methodRoutingCounter = new client.Counter({
+  name: "rpc_method_routing_total",
+  help: "How RPC calls are routed by method and provider",
+  labelNames: ["method", "provider", "route_type"],
+  registers: [register],
+});
+
+const infuraCreditsGauge = new client.Gauge({
+  name: "rpc_infura_credits_consumed",
+  help: "Estimated daily Infura credit usage",
+  labelNames: ["provider"],
+  registers: [register],
+});
+
+const rateLimitCounter = new client.Counter({
+  name: "rpc_rate_limit_hits_total",
+  help: "Rate limit (429/402) responses received",
+  labelNames: ["provider", "type"],
+  registers: [register],
+});
+
+// Infura credit costs per method (approximate)
+const INFURA_CREDIT_COSTS = {
+  eth_getLogs: 255,
+  eth_call: 26,
+  eth_getBlockByNumber: 16,
+  eth_getBlockByHash: 16,
+  eth_blockNumber: 10,
+  eth_chainId: 0,
+  eth_getTransactionReceipt: 15,
+  eth_getTransactionByHash: 15,
+  net_version: 0,
+  default: 20,
+};
+
+const INFURA_DAILY_CREDIT_LIMIT = 3_000_000;
+const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours in ms
+
+// Per-provider rolling 24h credit tracking
+// Each provider stores an array of { timestamp, cost } entries
+const providerCredits = {};
+
+function pruneOldEntries(providerName) {
+  if (!providerCredits[providerName]) {
+    providerCredits[providerName] = [];
+  }
+  const cutoff = Date.now() - ROLLING_WINDOW_MS;
+  const entries = providerCredits[providerName];
+  // Remove entries older than 24 hours from the front
+  while (entries.length > 0 && entries[0].timestamp < cutoff) {
+    entries.shift();
+  }
+}
+
+function getCreditsConsumed(providerName) {
+  pruneOldEntries(providerName);
+  return providerCredits[providerName].reduce((sum, e) => sum + e.cost, 0);
+}
+
+function addCredits(providerName, method) {
+  pruneOldEntries(providerName);
+  const cost = INFURA_CREDIT_COSTS[method] || INFURA_CREDIT_COSTS.default;
+  providerCredits[providerName].push({ timestamp: Date.now(), cost });
+
+  const total = providerCredits[providerName].reduce((sum, e) => sum + e.cost, 0);
+  infuraCreditsGauge.set({ provider: providerName }, total);
+
+  if (total >= INFURA_DAILY_CREDIT_LIMIT * 0.75) {
+    fastify.log.warn(
+      { provider: providerName, credits: total, limit: INFURA_DAILY_CREDIT_LIMIT },
+      "Infura credit usage at 75%+ of rolling 24h limit",
+    );
+  }
+}
+
+function isInfuraProvider(provider) {
+  return provider.name.startsWith("infura");
+}
+
+function isProviderOverDailyLimit(provider) {
+  if (!isInfuraProvider(provider)) return false;
+  return getCreditsConsumed(provider.name) >= INFURA_DAILY_CREDIT_LIMIT;
+}
+
+// Provider configuration
+// Each provider has:
+//   backfillRole: "logs" (eth_getLogs during backfill), "general" (other RPC during backfill), "all" (normal mode), "none" (excluded during backfill)
+//   backfillWeight: weight during backfill for its designated role
+//   normalWeight: weight after backfill (caught-up mode)
 const PROVIDERS = [
   {
     name: "thebuidl",
@@ -69,7 +156,9 @@ const PROVIDERS = [
     apiKey: process.env.RPC_API_KEY,
     headers: (apiKey) => ({ "x-api-key": apiKey }),
     unwrap: true,
-    weight: 40, // 40% of traffic during load balance mode
+    backfillRole: "none",
+    backfillWeight: 0,
+    normalWeight: 40,
   },
   {
     name: "alchemy",
@@ -77,7 +166,9 @@ const PROVIDERS = [
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
-    weight: 20, // 20% of traffic during load balance mode
+    backfillRole: "general",
+    backfillWeight: 33,
+    normalWeight: 12,
   },
   {
     name: "alchemy2",
@@ -85,7 +176,19 @@ const PROVIDERS = [
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
-    weight: 20, // 20% of traffic during load balance mode
+    backfillRole: "general",
+    backfillWeight: 33,
+    normalWeight: 12,
+  },
+  {
+    name: "alchemy3",
+    url: process.env.ALCHEMY_RPC_URL_3,
+    apiKey: null,
+    headers: () => ({}),
+    unwrap: false,
+    backfillRole: "general",
+    backfillWeight: 34,
+    normalWeight: 12,
   },
   {
     name: "infura",
@@ -93,16 +196,30 @@ const PROVIDERS = [
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
-    weight: 20, // 20% of traffic during load balance mode
+    backfillRole: "logs",
+    backfillWeight: 50,
+    normalWeight: 12,
   },
-  // Public free RPCs as last-resort fallbacks (weight 0 = fallback only)
+  {
+    name: "infura2",
+    url: process.env.INFURA_RPC_URL_2,
+    apiKey: null,
+    headers: () => ({}),
+    unwrap: false,
+    backfillRole: "logs",
+    backfillWeight: 50,
+    normalWeight: 12,
+  },
+  // Public free RPCs as last-resort fallbacks
   {
     name: "ankr",
     url: "https://rpc.ankr.com/eth",
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
-    weight: 0,
+    backfillRole: "fallback",
+    backfillWeight: 0,
+    normalWeight: 0,
   },
   {
     name: "publicnode",
@@ -110,7 +227,9 @@ const PROVIDERS = [
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
-    weight: 0,
+    backfillRole: "fallback",
+    backfillWeight: 0,
+    normalWeight: 0,
   },
   {
     name: "llamarpc",
@@ -118,7 +237,9 @@ const PROVIDERS = [
     apiKey: null,
     headers: () => ({}),
     unwrap: false,
-    weight: 0,
+    backfillRole: "fallback",
+    backfillWeight: 0,
+    normalWeight: 0,
   },
 ];
 
@@ -129,36 +250,85 @@ const BACKFILL_THRESHOLD = parseInt(
 );
 
 // State tracking
-let currentBlocksBehind = Infinity; // Start in load balance mode
-let isLoadBalanceMode = true;
+let currentBlocksBehind = Infinity; // Start in backfill mode
+let isBackfillMode = true;
+
+// Track providers temporarily disabled due to 402 (daily quota exceeded)
+const disabledProviders = new Set();
 
 // Get list of configured providers
 function getActiveProviders() {
   return PROVIDERS.filter((p) => {
+    if (disabledProviders.has(p.name)) return false;
     if (p.name === "thebuidl") return p.apiKey;
     return p.url;
   });
 }
 
-// Select provider based on mode and weights
-function selectProvider(providers) {
-  if (!isLoadBalanceMode || providers.length === 1) {
-    // Fallback mode: always return first provider
-    return providers[0];
-  }
+// Get providers for a specific role during backfill
+function getBackfillProviders(role) {
+  return getActiveProviders().filter((p) => {
+    if (p.backfillRole === role) return true;
+    if (p.backfillRole === "fallback") return false; // fallbacks added separately
+    return false;
+  });
+}
 
-  // Load balance mode: weighted random selection
-  const totalWeight = providers.reduce((sum, p) => sum + p.weight, 0);
+// Get fallback providers (public RPCs)
+function getFallbackProviders() {
+  return getActiveProviders().filter((p) => p.backfillRole === "fallback");
+}
+
+// Select provider based on weights
+function selectWeightedProvider(providers, weightKey) {
+  if (providers.length === 0) return null;
+  if (providers.length === 1) return providers[0];
+
+  const totalWeight = providers.reduce((sum, p) => sum + (p[weightKey] || 0), 0);
+  if (totalWeight === 0) return providers[0];
+
   let random = Math.random() * totalWeight;
-
   for (const provider of providers) {
-    random -= provider.weight;
-    if (random <= 0) {
-      return provider;
-    }
+    random -= (provider[weightKey] || 0);
+    if (random <= 0) return provider;
+  }
+  return providers[0];
+}
+
+// Build ordered provider list for a request based on method and mode
+function getProviderOrder(method) {
+  const allActive = getActiveProviders();
+
+  if (!isBackfillMode) {
+    // Normal mode: thebuidl primary, all others as weighted fallbacks
+    const primary = allActive.filter((p) => p.normalWeight > 0);
+    const fallbacks = allActive.filter((p) => p.normalWeight === 0);
+
+    // Sort by normalWeight descending (thebuidl first)
+    primary.sort((a, b) => b.normalWeight - a.normalWeight);
+    return [...primary, ...fallbacks];
   }
 
-  return providers[0]; // Fallback to first if something goes wrong
+  // Backfill mode: route by method
+  if (method === "eth_getLogs") {
+    // Primary: Infura providers (exclude those over daily limit)
+    const logProviders = getBackfillProviders("logs").filter(
+      (p) => !isProviderOverDailyLimit(p),
+    );
+    // Fallback: Alchemy, then public RPCs
+    const generalProviders = getBackfillProviders("general");
+    const fallbacks = getFallbackProviders();
+    return [...logProviders, ...generalProviders, ...fallbacks];
+  } else {
+    // Primary: Alchemy providers
+    const generalProviders = getBackfillProviders("general");
+    // Fallback: Infura (they can handle non-log calls too), then public RPCs
+    const logProviders = getBackfillProviders("logs").filter(
+      (p) => !isProviderOverDailyLimit(p),
+    );
+    const fallbacks = getFallbackProviders();
+    return [...generalProviders, ...logProviders, ...fallbacks];
+  }
 }
 
 // Normalize response from wrapped format if needed
@@ -205,6 +375,41 @@ async function makeRequest(provider, body, method) {
       body,
     });
 
+    // Handle rate limiting
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("Retry-After");
+      rateLimitCounter.inc({ provider: provider.name, type: "throttle" });
+      fastify.log.warn(
+        { provider: provider.name, retryAfter },
+        "Rate limited (429)",
+      );
+      throw new Error(`Rate limited (429), retry after ${retryAfter || "unknown"}s`);
+    }
+
+    // Handle daily quota exceeded (Infura rolling 24h limit)
+    if (response.status === 402) {
+      rateLimitCounter.inc({ provider: provider.name, type: "quota_exceeded" });
+      fastify.log.error(
+        { provider: provider.name },
+        "Daily quota exceeded (402) - disabling provider until credits roll off",
+      );
+      disabledProviders.add(provider.name);
+      // Re-enable when the oldest credit entry expires from the rolling window
+      // Check every 5 minutes if credits have dropped below the limit
+      const recheckInterval = setInterval(() => {
+        const credits = getCreditsConsumed(provider.name);
+        if (credits < INFURA_DAILY_CREDIT_LIMIT * 0.9) {
+          disabledProviders.delete(provider.name);
+          clearInterval(recheckInterval);
+          fastify.log.info(
+            { provider: provider.name, credits },
+            "Provider re-enabled after credits rolled off",
+          );
+        }
+      }, 5 * 60 * 1000);
+      throw new Error("Daily quota exceeded (402)");
+    }
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
@@ -220,12 +425,24 @@ async function makeRequest(provider, body, method) {
 
     timer();
     requestCounter.inc({ provider: provider.name, method, status: "success" });
+
+    // Track Infura credit usage
+    if (isInfuraProvider(provider)) {
+      addCredits(provider.name, method);
+    }
+
     return normalized;
   } catch (err) {
     timer();
     requestCounter.inc({ provider: provider.name, method, status: "error" });
 
-    const errorType = err.message.includes("HTTP") ? "http_error" : "rpc_error";
+    const errorType = err.message.includes("HTTP")
+      ? "http_error"
+      : err.message.includes("429")
+        ? "rate_limit"
+        : err.message.includes("402")
+          ? "quota_exceeded"
+          : "rpc_error";
     errorCounter.inc({ provider: provider.name, error_type: errorType });
 
     throw err;
@@ -235,7 +452,6 @@ async function makeRequest(provider, body, method) {
 // Fetch current indexing status to determine mode
 async function updateIndexingStatus() {
   try {
-    // Query graph-node indexing status API
     const response = await fetch("http://graph-node:8030/graphql", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -262,7 +478,6 @@ async function updateIndexingStatus() {
     const data = await response.json();
     const statuses = data.data?.indexingStatuses || [];
 
-    // Find mainnet chain info
     for (const status of statuses) {
       for (const chain of status.chains || []) {
         if (chain.network === "mainnet") {
@@ -273,16 +488,16 @@ async function updateIndexingStatus() {
           currentBlocksBehind = behind;
           blocksBehind.set(behind);
 
-          const wasLoadBalanceMode = isLoadBalanceMode;
-          isLoadBalanceMode = behind > BACKFILL_THRESHOLD;
-          loadBalanceMode.set(isLoadBalanceMode ? 1 : 0);
+          const wasBackfillMode = isBackfillMode;
+          isBackfillMode = behind > BACKFILL_THRESHOLD;
+          loadBalanceMode.set(isBackfillMode ? 1 : 0);
 
-          if (wasLoadBalanceMode !== isLoadBalanceMode) {
+          if (wasBackfillMode !== isBackfillMode) {
             fastify.log.info(
               {
                 blocksBehind: behind,
                 threshold: BACKFILL_THRESHOLD,
-                mode: isLoadBalanceMode ? "load-balance" : "fallback",
+                mode: isBackfillMode ? "backfill" : "normal",
               },
               "Mode changed",
             );
@@ -299,12 +514,28 @@ async function updateIndexingStatus() {
 // Health check endpoint
 fastify.get("/health", async () => {
   const providers = getActiveProviders();
+  const infuraProviders = providers.filter(isInfuraProvider);
+  const creditInfo = {};
+  for (const p of infuraProviders) {
+    creditInfo[p.name] = {
+      creditsUsed: getCreditsConsumed(p.name),
+      dailyLimit: INFURA_DAILY_CREDIT_LIMIT,
+      percentUsed: ((getCreditsConsumed(p.name) / INFURA_DAILY_CREDIT_LIMIT) * 100).toFixed(1) + "%",
+    };
+  }
+
   return {
     status: "ok",
-    providers: providers.map((p) => p.name),
-    mode: isLoadBalanceMode ? "load-balance" : "fallback",
+    providers: providers.map((p) => ({
+      name: p.name,
+      role: isBackfillMode ? p.backfillRole : "all",
+      weight: isBackfillMode ? p.backfillWeight : p.normalWeight,
+    })),
+    mode: isBackfillMode ? "backfill" : "normal",
     blocksBehind: currentBlocksBehind,
     threshold: BACKFILL_THRESHOLD,
+    disabledProviders: [...disabledProviders],
+    infuraCredits: creditInfo,
   };
 });
 
@@ -318,7 +549,7 @@ fastify.get("/metrics", async (request, reply) => {
 fastify.post("/", async (request, reply) => {
   const body = JSON.stringify(request.body);
   const method = request.body.method || "unknown";
-  const providers = getActiveProviders();
+  const providers = getProviderOrder(method);
 
   if (providers.length === 0) {
     return {
@@ -330,55 +561,107 @@ fastify.post("/", async (request, reply) => {
 
   let lastError;
   let previousProvider = null;
-  let attempts = 0;
-  const maxAttempts = providers.length;
   const triedProviders = new Set();
 
-  while (attempts < maxAttempts) {
-    // Select provider (weighted for load balance, first for fallback)
-    let provider;
-    if (isLoadBalanceMode) {
-      // In load balance mode, select weighted random (excluding already tried)
-      const availableProviders = providers.filter(
-        (p) => !triedProviders.has(p.name),
-      );
-      if (availableProviders.length === 0) break;
-      provider = selectProvider(availableProviders);
-    } else {
-      // In fallback mode, go through providers in order
-      provider = providers[attempts];
+  // In backfill mode, select weighted from the primary group first
+  if (isBackfillMode) {
+    const isLogMethod = method === "eth_getLogs";
+    const weightKey = "backfillWeight";
+
+    // Get primary providers for this method (not yet tried)
+    const primaryRole = isLogMethod ? "logs" : "general";
+    const primaryProviders = providers.filter(
+      (p) => p.backfillRole === primaryRole && !triedProviders.has(p.name),
+    );
+
+    // Try weighted selection from primary group first
+    while (primaryProviders.length > 0) {
+      const available = primaryProviders.filter((p) => !triedProviders.has(p.name));
+      if (available.length === 0) break;
+
+      const provider = selectWeightedProvider(available, weightKey);
+      if (!provider) break;
+
+      triedProviders.add(provider.name);
+
+      const routeType = isLogMethod ? "logs_primary" : "general_primary";
+      methodRoutingCounter.inc({ method, provider: provider.name, route_type: routeType });
+
+      try {
+        const result = await makeRequest(provider, body, method);
+        activeProvider.set(PROVIDERS.indexOf(provider) + 1);
+        fastify.log.info(
+          { provider: provider.name, method, mode: "backfill", route: routeType },
+          "Request successful",
+        );
+        return result;
+      } catch (err) {
+        fastify.log.warn(
+          { provider: provider.name, method, error: err.message },
+          "Provider failed, trying next",
+        );
+        if (previousProvider) {
+          fallbackCounter.inc({ from_provider: previousProvider, to_provider: provider.name });
+        }
+        previousProvider = provider.name;
+        lastError = err;
+      }
     }
 
-    triedProviders.add(provider.name);
-    attempts++;
+    // Try remaining providers as fallback
+    for (const provider of providers) {
+      if (triedProviders.has(provider.name)) continue;
+      triedProviders.add(provider.name);
 
-    try {
-      const result = await makeRequest(provider, body, method);
-      activeProvider.set(providers.indexOf(provider) + 1);
-      fastify.log.info(
-        {
-          provider: provider.name,
-          method,
-          mode: isLoadBalanceMode ? "load-balance" : "fallback",
-        },
-        "Request successful",
-      );
-      return result;
-    } catch (err) {
-      fastify.log.warn(
-        { provider: provider.name, method, error: err.message },
-        "Provider failed, trying next",
-      );
+      methodRoutingCounter.inc({ method, provider: provider.name, route_type: "fallback" });
 
-      if (previousProvider) {
-        fallbackCounter.inc({
-          from_provider: previousProvider,
-          to_provider: provider.name,
-        });
+      try {
+        const result = await makeRequest(provider, body, method);
+        activeProvider.set(PROVIDERS.indexOf(provider) + 1);
+        fastify.log.info(
+          { provider: provider.name, method, mode: "backfill", route: "fallback" },
+          "Request successful (fallback)",
+        );
+        return result;
+      } catch (err) {
+        fastify.log.warn(
+          { provider: provider.name, method, error: err.message },
+          "Fallback provider failed",
+        );
+        if (previousProvider) {
+          fallbackCounter.inc({ from_provider: previousProvider, to_provider: provider.name });
+        }
+        previousProvider = provider.name;
+        lastError = err;
       }
+    }
+  } else {
+    // Normal mode: try providers in order (thebuidl first, then fallbacks)
+    for (const provider of providers) {
+      if (triedProviders.has(provider.name)) continue;
+      triedProviders.add(provider.name);
 
-      previousProvider = provider.name;
-      lastError = err;
+      methodRoutingCounter.inc({ method, provider: provider.name, route_type: "normal" });
+
+      try {
+        const result = await makeRequest(provider, body, method);
+        activeProvider.set(PROVIDERS.indexOf(provider) + 1);
+        fastify.log.info(
+          { provider: provider.name, method, mode: "normal" },
+          "Request successful",
+        );
+        return result;
+      } catch (err) {
+        fastify.log.warn(
+          { provider: provider.name, method, error: err.message },
+          "Provider failed, trying next",
+        );
+        if (previousProvider) {
+          fallbackCounter.inc({ from_provider: previousProvider, to_provider: provider.name });
+        }
+        previousProvider = provider.name;
+        lastError = err;
+      }
     }
   }
 
@@ -407,9 +690,12 @@ fastify.listen({ port: PORT, host: "0.0.0.0" }, (err) => {
   const providers = getActiveProviders();
   fastify.log.info(
     {
-      providers: providers.map((p) => p.name),
+      providers: providers.map((p) => ({
+        name: p.name,
+        role: isBackfillMode ? p.backfillRole : "all",
+      })),
       backfillThreshold: BACKFILL_THRESHOLD,
-      mode: isLoadBalanceMode ? "load-balance" : "fallback",
+      mode: isBackfillMode ? "backfill" : "normal",
     },
     "RPC proxy started",
   );

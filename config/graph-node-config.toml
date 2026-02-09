@@ -1,0 +1,12 @@
+[store]
+[store.primary]
+connection = "postgresql://graph-node:password@postgres:5432/graph_node"
+pool_size = 10
+
+[chains]
+[chains.mainnet]
+shard = "primary"
+protocol = "ethereum"
+provider = [
+  { label = "rpc_proxy", url = "http://rpc-proxy:3000", features = [] }
+]
