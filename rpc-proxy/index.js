@@ -180,12 +180,19 @@ function addCredits(providerName, method) {
   const cost = INFURA_CREDIT_COSTS[method] || INFURA_CREDIT_COSTS.default;
   providerCredits[providerName].push({ timestamp: Date.now(), cost });
 
-  const total = providerCredits[providerName].reduce((sum, e) => sum + e.cost, 0);
+  const total = providerCredits[providerName].reduce(
+    (sum, e) => sum + e.cost,
+    0,
+  );
   infuraCreditsGauge.set({ provider: providerName }, total);
 
   if (total >= INFURA_DAILY_CREDIT_LIMIT * 0.75) {
     fastify.log.warn(
-      { provider: providerName, credits: total, limit: INFURA_DAILY_CREDIT_LIMIT },
+      {
+        provider: providerName,
+        credits: total,
+        limit: INFURA_DAILY_CREDIT_LIMIT,
+      },
       "Infura credit usage at 75%+ of rolling 24h limit",
     );
   }
@@ -268,36 +275,36 @@ const PROVIDERS = [
   },
   // Public free RPCs - only used in normal mode (NOT during backfill)
   // These are full nodes, not archive nodes, so they cannot serve historical data reliably
-  {
-    name: "ankr",
-    url: "https://rpc.ankr.com/eth",
-    apiKey: null,
-    headers: () => ({}),
-    unwrap: false,
-    backfillRole: "none",
-    backfillWeight: 0,
-    normalWeight: 0,
-  },
-  {
-    name: "publicnode",
-    url: "https://ethereum-rpc.publicnode.com",
-    apiKey: null,
-    headers: () => ({}),
-    unwrap: false,
-    backfillRole: "none",
-    backfillWeight: 0,
-    normalWeight: 0,
-  },
-  {
-    name: "llamarpc",
-    url: "https://eth.llamarpc.com",
-    apiKey: null,
-    headers: () => ({}),
-    unwrap: false,
-    backfillRole: "none",
-    backfillWeight: 0,
-    normalWeight: 0,
-  },
+  // {
+  //   name: "ankr",
+  //   url: "https://rpc.ankr.com/eth",
+  //   apiKey: null,
+  //   headers: () => ({}),
+  //   unwrap: false,
+  //   backfillRole: "none",
+  //   backfillWeight: 0,
+  //   normalWeight: 0,
+  // },
+  // {
+  //   name: "publicnode",
+  //   url: "https://ethereum-rpc.publicnode.com",
+  //   apiKey: null,
+  //   headers: () => ({}),
+  //   unwrap: false,
+  //   backfillRole: "none",
+  //   backfillWeight: 0,
+  //   normalWeight: 0,
+  // },
+  // {
+  //   name: "llamarpc",
+  //   url: "https://eth.llamarpc.com",
+  //   apiKey: null,
+  //   headers: () => ({}),
+  //   unwrap: false,
+  //   backfillRole: "none",
+  //   backfillWeight: 0,
+  //   normalWeight: 0,
+  // },
 ];
 
 const PORT = process.env.PORT || 3000;
@@ -336,12 +343,15 @@ function selectWeightedProvider(providers, weightKey) {
   if (providers.length === 0) return null;
   if (providers.length === 1) return providers[0];
 
-  const totalWeight = providers.reduce((sum, p) => sum + (p[weightKey] || 0), 0);
+  const totalWeight = providers.reduce(
+    (sum, p) => sum + (p[weightKey] || 0),
+    0,
+  );
   if (totalWeight === 0) return providers[0];
 
   let random = Math.random() * totalWeight;
   for (const provider of providers) {
-    random -= (provider[weightKey] || 0);
+    random -= provider[weightKey] || 0;
     if (random <= 0) return provider;
   }
   return providers[0];
@@ -419,10 +429,14 @@ async function makeRequest(provider, body, method) {
 
   // Throttle Infura requests to stay under 500 credits/sec
   if (isInfuraProvider(provider)) {
-    const creditCost = INFURA_CREDIT_COSTS[method] || INFURA_CREDIT_COSTS.default;
+    const creditCost =
+      INFURA_CREDIT_COSTS[method] || INFURA_CREDIT_COSTS.default;
     const delayMs = getThrottleDelay(provider.name, creditCost);
     if (delayMs > 0) {
-      throttleDelayHistogram.observe({ provider: provider.name }, delayMs / 1000);
+      throttleDelayHistogram.observe(
+        { provider: provider.name },
+        delayMs / 1000,
+      );
       fastify.log.debug(
         { provider: provider.name, method, delayMs, creditCost },
         "Throttling request to stay within rate limit",
@@ -448,7 +462,9 @@ async function makeRequest(provider, body, method) {
         { provider: provider.name, retryAfter },
         "Rate limited (429)",
       );
-      throw new Error(`Rate limited (429), retry after ${retryAfter || "unknown"}s`);
+      throw new Error(
+        `Rate limited (429), retry after ${retryAfter || "unknown"}s`,
+      );
     }
 
     // Handle daily quota exceeded (Infura rolling 24h limit)
@@ -461,17 +477,20 @@ async function makeRequest(provider, body, method) {
       disabledProviders.add(provider.name);
       // Re-enable when the oldest credit entry expires from the rolling window
       // Check every 5 minutes if credits have dropped below the limit
-      const recheckInterval = setInterval(() => {
-        const credits = getCreditsConsumed(provider.name);
-        if (credits < INFURA_DAILY_CREDIT_LIMIT * 0.9) {
-          disabledProviders.delete(provider.name);
-          clearInterval(recheckInterval);
-          fastify.log.info(
-            { provider: provider.name, credits },
-            "Provider re-enabled after credits rolled off",
-          );
-        }
-      }, 5 * 60 * 1000);
+      const recheckInterval = setInterval(
+        () => {
+          const credits = getCreditsConsumed(provider.name);
+          if (credits < INFURA_DAILY_CREDIT_LIMIT * 0.9) {
+            disabledProviders.delete(provider.name);
+            clearInterval(recheckInterval);
+            fastify.log.info(
+              { provider: provider.name, credits },
+              "Provider re-enabled after credits rolled off",
+            );
+          }
+        },
+        5 * 60 * 1000,
+      );
       throw new Error("Daily quota exceeded (402)");
     }
 
@@ -587,7 +606,11 @@ fastify.get("/health", async () => {
     creditInfo[p.name] = {
       creditsUsed: getCreditsConsumed(p.name),
       dailyLimit: INFURA_DAILY_CREDIT_LIMIT,
-      percentUsed: ((getCreditsConsumed(p.name) / INFURA_DAILY_CREDIT_LIMIT) * 100).toFixed(1) + "%",
+      percentUsed:
+        (
+          (getCreditsConsumed(p.name) / INFURA_DAILY_CREDIT_LIMIT) *
+          100
+        ).toFixed(1) + "%",
       bucketTokens: Math.round(bucket.tokens),
       rateLimit: `${INFURA_CREDITS_PER_SECOND} credits/sec`,
     };
@@ -645,7 +668,9 @@ fastify.post("/", async (request, reply) => {
 
     // Try weighted selection from primary group first
     while (primaryProviders.length > 0) {
-      const available = primaryProviders.filter((p) => !triedProviders.has(p.name));
+      const available = primaryProviders.filter(
+        (p) => !triedProviders.has(p.name),
+      );
       if (available.length === 0) break;
 
       const provider = selectWeightedProvider(available, weightKey);
@@ -654,13 +679,22 @@ fastify.post("/", async (request, reply) => {
       triedProviders.add(provider.name);
 
       const routeType = isLogMethod ? "logs_primary" : "general_primary";
-      methodRoutingCounter.inc({ method, provider: provider.name, route_type: routeType });
+      methodRoutingCounter.inc({
+        method,
+        provider: provider.name,
+        route_type: routeType,
+      });
 
       try {
         const result = await makeRequest(provider, body, method);
         activeProvider.set(PROVIDERS.indexOf(provider) + 1);
         fastify.log.info(
-          { provider: provider.name, method, mode: "backfill", route: routeType },
+          {
+            provider: provider.name,
+            method,
+            mode: "backfill",
+            route: routeType,
+          },
           "Request successful",
         );
         return result;
@@ -670,7 +704,10 @@ fastify.post("/", async (request, reply) => {
           "Provider failed, trying next",
         );
         if (previousProvider) {
-          fallbackCounter.inc({ from_provider: previousProvider, to_provider: provider.name });
+          fallbackCounter.inc({
+            from_provider: previousProvider,
+            to_provider: provider.name,
+          });
         }
         previousProvider = provider.name;
         lastError = err;
@@ -682,13 +719,22 @@ fastify.post("/", async (request, reply) => {
       if (triedProviders.has(provider.name)) continue;
       triedProviders.add(provider.name);
 
-      methodRoutingCounter.inc({ method, provider: provider.name, route_type: "fallback" });
+      methodRoutingCounter.inc({
+        method,
+        provider: provider.name,
+        route_type: "fallback",
+      });
 
       try {
         const result = await makeRequest(provider, body, method);
         activeProvider.set(PROVIDERS.indexOf(provider) + 1);
         fastify.log.info(
-          { provider: provider.name, method, mode: "backfill", route: "fallback" },
+          {
+            provider: provider.name,
+            method,
+            mode: "backfill",
+            route: "fallback",
+          },
           "Request successful (fallback)",
         );
         return result;
@@ -698,7 +744,10 @@ fastify.post("/", async (request, reply) => {
           "Fallback provider failed",
         );
         if (previousProvider) {
-          fallbackCounter.inc({ from_provider: previousProvider, to_provider: provider.name });
+          fallbackCounter.inc({
+            from_provider: previousProvider,
+            to_provider: provider.name,
+          });
         }
         previousProvider = provider.name;
         lastError = err;
@@ -710,7 +759,11 @@ fastify.post("/", async (request, reply) => {
       if (triedProviders.has(provider.name)) continue;
       triedProviders.add(provider.name);
 
-      methodRoutingCounter.inc({ method, provider: provider.name, route_type: "normal" });
+      methodRoutingCounter.inc({
+        method,
+        provider: provider.name,
+        route_type: "normal",
+      });
 
       try {
         const result = await makeRequest(provider, body, method);
@@ -726,7 +779,10 @@ fastify.post("/", async (request, reply) => {
           "Provider failed, trying next",
         );
         if (previousProvider) {
-          fallbackCounter.inc({ from_provider: previousProvider, to_provider: provider.name });
+          fallbackCounter.inc({
+            from_provider: previousProvider,
+            to_provider: provider.name,
+          });
         }
         previousProvider = provider.name;
         lastError = err;
