@@ -371,24 +371,17 @@ function getProviderOrder(method) {
     return [...primary, ...fallbacks];
   }
 
-  // Backfill mode: route by method
-  // Public RPCs are excluded entirely during backfill (not archive nodes)
+  // Backfill mode: strict routing by method, NO cross-fallbacks
+  // eth_getLogs ONLY goes to Infura (5000 block range support)
+  // All other calls ONLY go to Alchemy
+  // If all providers in a group fail, the request fails — graph-node retries naturally
+  // This prevents Alchemy eth_getLogs errors from making graph-node shrink block ranges
   if (method === "eth_getLogs") {
-    // Primary: Infura providers (exclude those over daily limit)
-    const logProviders = getBackfillProviders("logs").filter(
+    return getBackfillProviders("logs").filter(
       (p) => !isProviderOverDailyLimit(p),
     );
-    // Fallback: Alchemy (archive nodes, just limited block range for getLogs)
-    const generalProviders = getBackfillProviders("general");
-    return [...logProviders, ...generalProviders];
   } else {
-    // Primary: Alchemy providers
-    const generalProviders = getBackfillProviders("general");
-    // Fallback: Infura (they can handle non-log calls too)
-    const logProviders = getBackfillProviders("logs").filter(
-      (p) => !isProviderOverDailyLimit(p),
-    );
-    return [...generalProviders, ...logProviders];
+    return getBackfillProviders("general");
   }
 }
 
@@ -714,45 +707,6 @@ fastify.post("/", async (request, reply) => {
       }
     }
 
-    // Try remaining providers as fallback
-    for (const provider of providers) {
-      if (triedProviders.has(provider.name)) continue;
-      triedProviders.add(provider.name);
-
-      methodRoutingCounter.inc({
-        method,
-        provider: provider.name,
-        route_type: "fallback",
-      });
-
-      try {
-        const result = await makeRequest(provider, body, method);
-        activeProvider.set(PROVIDERS.indexOf(provider) + 1);
-        fastify.log.info(
-          {
-            provider: provider.name,
-            method,
-            mode: "backfill",
-            route: "fallback",
-          },
-          "Request successful (fallback)",
-        );
-        return result;
-      } catch (err) {
-        fastify.log.warn(
-          { provider: provider.name, method, error: err.message },
-          "Fallback provider failed",
-        );
-        if (previousProvider) {
-          fallbackCounter.inc({
-            from_provider: previousProvider,
-            to_provider: provider.name,
-          });
-        }
-        previousProvider = provider.name;
-        lastError = err;
-      }
-    }
   } else {
     // Normal mode: try providers in order (thebuidl first, then fallbacks)
     for (const provider of providers) {
