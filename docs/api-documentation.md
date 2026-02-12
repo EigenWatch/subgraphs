@@ -29,6 +29,7 @@ X-API-Key: your_api_key_here
 | `/health`       | ❌ No                     |
 | `/subgraphs/*`  | ✅ Yes (X-API-Key header) |
 | `/graphql`      | ✅ Yes (X-API-Key header) |
+| `/counts`       | ✅ Yes (X-API-Key header) |
 | `/prometheus/*` | ✅ Yes (X-API-Key header) |
 | `/rpc-metrics`  | ✅ Yes (X-API-Key header) |
 | `/metrics`      | ✅ Yes (X-API-Key header) |
@@ -162,7 +163,63 @@ curl -X POST https://subgraph.eigenwatch.xyz/graphql \
 
 ---
 
-### 4. Prometheus Metrics API
+### 4. Entity Counts API
+
+Get row counts for all indexed entities, served directly from Postgres for maximum performance.
+
+```
+GET /counts
+```
+
+**Authentication**: Required (`X-API-Key` header)
+
+**Query Parameters**:
+
+| Parameter | Type   | Default | Description                                    |
+| --------- | ------ | ------- | ---------------------------------------------- |
+| `exact`   | string | `false` | Set to `"true"` for exact `COUNT(*)` (slower)  |
+| `entity`  | string | —       | Comma-separated entity names to filter results |
+
+**Example — Get All Counts (approximate, cached)**:
+
+```bash
+curl -H "X-API-Key: your_api_key" \
+  https://subgraph.eigenwatch.xyz/counts
+```
+
+**Example — Get Exact Count for Specific Entities**:
+
+```bash
+curl -H "X-API-Key: your_api_key" \
+  "https://subgraph.eigenwatch.xyz/counts?exact=true&entity=operator,avs"
+```
+
+**Response**:
+
+```json
+{
+  "schema": "sgd1",
+  "cached": false,
+  "cachedAt": "2024-03-15T12:00:00.000Z",
+  "counts": {
+    "operator": 4521,
+    "avs": 89,
+    "staker_delegation_event": 125403,
+    "withdrawal_event": 8721
+  }
+}
+```
+
+**Notes**:
+
+- Approximate counts use `pg_class.reltuples` which is fast but may be slightly stale.
+- Exact counts use `COUNT(*)` and are always accurate but slower for large tables.
+- Results are cached for 60 seconds by default (approximate mode only).
+- Entity names correspond to snake_case versions of subgraph entity names.
+
+---
+
+### 5. Prometheus Metrics API
 
 Access Prometheus for monitoring data (used by Grafana).
 
@@ -208,7 +265,7 @@ curl -H "X-API-Key: your_api_key" \
 
 ---
 
-### 5. RPC Proxy Metrics
+### 6. RPC Proxy Metrics
 
 Direct access to RPC proxy Prometheus metrics in text format.
 
@@ -237,7 +294,7 @@ rpc_requests_total{provider="thebuidl",method="eth_getBlockReceipts",status="suc
 
 ---
 
-### 6. Graph Node Metrics
+### 7. Graph Node Metrics
 
 Raw metrics from the Graph Node.
 
@@ -256,7 +313,7 @@ curl -H "X-API-Key: your_api_key" \
 
 ---
 
-### 7. Subgraph Deployment API
+### 8. Subgraph Deployment API
 
 Deploy subgraphs remotely via the Graph Node admin API.
 

@@ -105,6 +105,18 @@ http {
             proxy_set_header Host $host;
         }
 
+        # Entity Counts API (protected)
+        location /counts {
+            if ($http_x_api_key != "${GRAPHQL_API_KEY}") {
+                return 401 '{"error": "Unauthorized - Invalid or missing API key"}';
+            }
+
+            proxy_pass http://counts-api:3001;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
         # Subgraph Deployment API (key in URL path for graph-cli compatibility)
         # Usage: https://subgraph.eigenwatch.xyz/deploy/<DEPLOY_KEY>/
         location ~ ^/deploy/([^/]+) {

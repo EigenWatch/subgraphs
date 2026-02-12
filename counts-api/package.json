@@ -1,0 +1,12 @@
+{
+  "name": "counts-api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "fastify": "^5.2.0",
+    "pg": "^8.13.0"
+  }
+}

@@ -25,7 +25,6 @@ import {
 import { Strategy as StrategyTemplate } from "../generated/templates";
 
 import { log, Address, BigInt } from "@graphprotocol/graph-ts";
-import { incrementEventCounter } from "./utils";
 
 // ========================================
 // DEPOSIT EVENTS
@@ -49,7 +48,7 @@ export function handleDeposit(event: DepositEvent): void {
 
   // Create pure event entity
   let deposit = new Deposit(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -68,7 +67,6 @@ export function handleDeposit(event: DepositEvent): void {
   staker.save();
   strategy.save();
   deposit.save();
-  incrementEventCounter("Deposit", event.block.number, event.block.timestamp);
 
   log.info("Deposit event saved: {}", [deposit.id]);
 }
@@ -78,7 +76,7 @@ export function handleDeposit(event: DepositEvent): void {
 // ========================================
 
 export function handleStrategyWhitelisterChanged(
-  event: StrategyWhitelisterChanged
+  event: StrategyWhitelisterChanged,
 ): void {
   log.info("Processing StrategyWhitelisterChanged event: {}", [
     event.transaction.hash.toHexString(),
@@ -86,7 +84,7 @@ export function handleStrategyWhitelisterChanged(
 
   // Create pure event entity
   let whitelisterEvent = new StrategyWhitelisterChangedEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -101,13 +99,12 @@ export function handleStrategyWhitelisterChanged(
   whitelisterEvent.newAddress = event.params.newAddress;
 
   whitelisterEvent.save();
-  incrementEventCounter("StrategyWhitelisterChangedEntity", event.block.number, event.block.timestamp);
 
   log.info("StrategyWhitelisterChanged event saved: {}", [whitelisterEvent.id]);
 }
 
 export function handleStrategyAddedToDepositWhitelist(
-  event: StrategyAddedToDepositWhitelist
+  event: StrategyAddedToDepositWhitelist,
 ): void {
   log.info("Processing StrategyAddedToDepositWhitelist event: {}", [
     event.transaction.hash.toHexString(),
@@ -118,7 +115,7 @@ export function handleStrategyAddedToDepositWhitelist(
 
   // Create pure event entity
   let whitelistEvent = new StrategyWhitelistEvent(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -135,7 +132,6 @@ export function handleStrategyAddedToDepositWhitelist(
   // Save entities
   strategy.save();
   whitelistEvent.save();
-  incrementEventCounter("StrategyWhitelistEvent", event.block.number, event.block.timestamp);
 
   log.info("StrategyAddedToDepositWhitelist event saved: {}", [
     whitelistEvent.id,
@@ -146,7 +142,7 @@ export function handleStrategyAddedToDepositWhitelist(
 }
 
 export function handleStrategyRemovedFromDepositWhitelist(
-  event: StrategyRemovedFromDepositWhitelist
+  event: StrategyRemovedFromDepositWhitelist,
 ): void {
   log.info("Processing StrategyRemovedFromDepositWhitelist event: {}", [
     event.transaction.hash.toHexString(),
@@ -157,7 +153,7 @@ export function handleStrategyRemovedFromDepositWhitelist(
 
   // Create pure event entity
   let whitelistEvent = new StrategyWhitelistEvent(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -174,7 +170,6 @@ export function handleStrategyRemovedFromDepositWhitelist(
   // Save entities
   strategy.save();
   whitelistEvent.save();
-  incrementEventCounter("StrategyWhitelistEvent", event.block.number, event.block.timestamp);
 
   log.info("StrategyRemovedFromDepositWhitelist event saved: {}", [
     whitelistEvent.id,
@@ -186,7 +181,7 @@ export function handleStrategyRemovedFromDepositWhitelist(
 // ========================================
 
 export function handleBurnOrRedistributableSharesIncreased(
-  event: BurnOrRedistributableSharesIncreased
+  event: BurnOrRedistributableSharesIncreased,
 ): void {
   log.info("Processing BurnOrRedistributableSharesIncreased event: {}", [
     event.transaction.hash.toHexString(),
@@ -195,13 +190,13 @@ export function handleBurnOrRedistributableSharesIncreased(
   // Create minimal lookup entities if needed
   let operatorSet = getOrCreateOperatorSet(
     event.params.operatorSet.avs,
-    event.params.operatorSet.id
+    event.params.operatorSet.id,
   );
   let strategy = getOrCreateStrategy(event.params.strategy);
 
   // Create pure event entity
   let burnableEvent = new BurnOrRedistributableSharesIncreasedEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -221,7 +216,6 @@ export function handleBurnOrRedistributableSharesIncreased(
   operatorSet.save();
   strategy.save();
   burnableEvent.save();
-  incrementEventCounter("BurnOrRedistributableSharesIncreasedEntity", event.block.number, event.block.timestamp);
 
   log.info("BurnOrRedistributableSharesIncreased event saved: {}", [
     burnableEvent.id,
@@ -229,7 +223,7 @@ export function handleBurnOrRedistributableSharesIncreased(
 }
 
 export function handleBurnOrRedistributableSharesDecreased(
-  event: BurnOrRedistributableSharesDecreased
+  event: BurnOrRedistributableSharesDecreased,
 ): void {
   log.info("Processing BurnOrRedistributableSharesDecreased event: {}", [
     event.transaction.hash.toHexString(),
@@ -238,13 +232,13 @@ export function handleBurnOrRedistributableSharesDecreased(
   // Create minimal lookup entities if needed
   let operatorSet = getOrCreateOperatorSet(
     event.params.operatorSet.avs,
-    event.params.operatorSet.id
+    event.params.operatorSet.id,
   );
   let strategy = getOrCreateStrategy(event.params.strategy);
 
   // Create pure event entity
   let burnableEvent = new BurnOrRedistributableSharesDecreasedEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -264,7 +258,6 @@ export function handleBurnOrRedistributableSharesDecreased(
   operatorSet.save();
   strategy.save();
   burnableEvent.save();
-  incrementEventCounter("BurnOrRedistributableSharesDecreasedEntity", event.block.number, event.block.timestamp);
 
   log.info("BurnOrRedistributableSharesDecreased event saved: {}", [
     burnableEvent.id,
@@ -272,7 +265,7 @@ export function handleBurnOrRedistributableSharesDecreased(
 }
 
 export function handleBurnableSharesDecreased(
-  event: BurnableSharesDecreased
+  event: BurnableSharesDecreased,
 ): void {
   log.info("Processing BurnableSharesDecreased event: {}", [
     event.transaction.hash.toHexString(),
@@ -283,7 +276,7 @@ export function handleBurnableSharesDecreased(
 
   // Create pure event entity
   let burnableEvent = new BurnableSharesDecreasedEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -300,7 +293,6 @@ export function handleBurnableSharesDecreased(
   // Save entities
   strategy.save();
   burnableEvent.save();
-  incrementEventCounter("BurnableSharesDecreasedEntity", event.block.number, event.block.timestamp);
 
   log.info("BurnableSharesDecreased event saved: {}", [burnableEvent.id]);
 }
@@ -338,7 +330,7 @@ function getOrCreateAVS(address: Address): AVS {
 
 function getOrCreateOperatorSet(
   avsAddress: Address,
-  operatorSetId: BigInt
+  operatorSetId: BigInt,
 ): OperatorSet {
   let id = avsAddress.toHexString() + "-" + operatorSetId.toString();
   let operatorSet = OperatorSet.load(id);

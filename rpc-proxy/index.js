@@ -105,7 +105,7 @@ const providerCredits = {};
 
 // Track when each provider is next available to ensure sequential requests
 const providerNextAvailable = {};
-const GLOBAL_REQUEST_DELAY = 4000; // 4 seconds between requests per key
+const GLOBAL_REQUEST_DELAY = 2000; // 2 seconds between requests per key
 
 function checkMidnightReset() {
   const now = new Date();

@@ -36,7 +36,6 @@ import {
 } from "../generated/schema";
 
 import { log, Address, BigInt } from "@graphprotocol/graph-ts";
-import { incrementEventCounter } from "./utils";
 
 // ========================================
 // SLASHING EVENTS
@@ -51,7 +50,7 @@ export function handleOperatorSlashed(event: OperatorSlashed): void {
   if (event.params.operator.equals(Address.zero())) {
     log.critical(
       "INVARIANT VIOLATION: OperatorSlashed with zero operator at tx {}",
-      [event.transaction.hash.toHexString()]
+      [event.transaction.hash.toHexString()],
     );
   }
 
@@ -59,12 +58,12 @@ export function handleOperatorSlashed(event: OperatorSlashed): void {
   let operator = getOrCreateOperator(event.params.operator);
   let operatorSet = getOrCreateOperatorSet(
     event.params.operatorSet.avs,
-    event.params.operatorSet.id
+    event.params.operatorSet.id,
   );
 
   // Create pure event entity with complete data
   let slashingEvent = new OperatorSlashedEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields (inherited from BaseEvent interface)
@@ -78,7 +77,7 @@ export function handleOperatorSlashed(event: OperatorSlashed): void {
   slashingEvent.operator = operator.id;
   slashingEvent.operatorSet = operatorSet.id;
   slashingEvent.strategies = event.params.strategies.map<string>(
-    (strategy: Address) => strategy.toHexString()
+    (strategy: Address) => strategy.toHexString(),
   );
   slashingEvent.wadSlashed = event.params.wadSlashed;
   slashingEvent.description = event.params.description;
@@ -87,7 +86,6 @@ export function handleOperatorSlashed(event: OperatorSlashed): void {
   operator.save();
   operatorSet.save();
   slashingEvent.save();
-  incrementEventCounter("OperatorSlashedEntity", event.block.number, event.block.timestamp);
 
   log.info("OperatorSlashed event saved: {}", [slashingEvent.id]);
 }
@@ -105,13 +103,13 @@ export function handleAllocationUpdated(event: AllocationUpdated): void {
   let operator = getOrCreateOperator(event.params.operator);
   let operatorSet = getOrCreateOperatorSet(
     event.params.operatorSet.avs,
-    event.params.operatorSet.id
+    event.params.operatorSet.id,
   );
   let strategy = getOrCreateStrategy(event.params.strategy);
 
   // Create pure event entity
   let allocationEvent = new AllocationEvent(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -133,7 +131,6 @@ export function handleAllocationUpdated(event: AllocationUpdated): void {
   operatorSet.save();
   strategy.save();
   allocationEvent.save();
-  incrementEventCounter("AllocationEvent", event.block.number, event.block.timestamp);
 
   log.info("AllocationUpdated event saved: {}", [allocationEvent.id]);
 }
@@ -148,7 +145,7 @@ export function handleAllocationDelaySet(event: AllocationDelaySet): void {
 
   // Create pure event entity
   let delayEvent = new AllocationDelaySetEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -166,13 +163,12 @@ export function handleAllocationDelaySet(event: AllocationDelaySet): void {
   // Save entities
   operator.save();
   delayEvent.save();
-  incrementEventCounter("AllocationDelaySetEntity", event.block.number, event.block.timestamp);
 
   log.info("AllocationDelaySet event saved: {}", [delayEvent.id]);
 }
 
 export function handleEncumberedMagnitudeUpdated(
-  event: EncumberedMagnitudeUpdated
+  event: EncumberedMagnitudeUpdated,
 ): void {
   log.info("Processing EncumberedMagnitudeUpdated event: {}", [
     event.transaction.hash.toHexString(),
@@ -184,7 +180,7 @@ export function handleEncumberedMagnitudeUpdated(
 
   // Create pure event entity
   let magnitudeEvent = new EncumberedMagnitudeUpdatedEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -203,7 +199,6 @@ export function handleEncumberedMagnitudeUpdated(
   operator.save();
   strategy.save();
   magnitudeEvent.save();
-  incrementEventCounter("EncumberedMagnitudeUpdatedEntity", event.block.number, event.block.timestamp);
 
   log.info("EncumberedMagnitudeUpdated event saved: {}", [magnitudeEvent.id]);
 }
@@ -219,7 +214,7 @@ export function handleMaxMagnitudeUpdated(event: MaxMagnitudeUpdated): void {
 
   // Create pure event entity
   let maxMagnitudeEvent = new MaxMagnitudeUpdatedEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -238,7 +233,6 @@ export function handleMaxMagnitudeUpdated(event: MaxMagnitudeUpdated): void {
   operator.save();
   strategy.save();
   maxMagnitudeEvent.save();
-  incrementEventCounter("MaxMagnitudeUpdatedEntity", event.block.number, event.block.timestamp);
 
   log.info("MaxMagnitudeUpdated event saved: {}", [maxMagnitudeEvent.id]);
 }
@@ -256,12 +250,12 @@ export function handleOperatorSetCreated(event: OperatorSetCreated): void {
   let avs = getOrCreateAVS(event.params.operatorSet.avs);
   let operatorSet = getOrCreateOperatorSet(
     event.params.operatorSet.avs,
-    event.params.operatorSet.id
+    event.params.operatorSet.id,
   );
 
   // Create pure event entity
   let creationEvent = new OperatorSetCreatedEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -280,13 +274,12 @@ export function handleOperatorSetCreated(event: OperatorSetCreated): void {
   avs.save();
   operatorSet.save();
   creationEvent.save();
-  incrementEventCounter("OperatorSetCreatedEntity", event.block.number, event.block.timestamp);
 
   log.info("OperatorSetCreated event saved: {}", [creationEvent.id]);
 }
 
 export function handleOperatorAddedToOperatorSet(
-  event: OperatorAddedToOperatorSet
+  event: OperatorAddedToOperatorSet,
 ): void {
   log.info("Processing OperatorAddedToOperatorSet event: {}", [
     event.transaction.hash.toHexString(),
@@ -296,12 +289,12 @@ export function handleOperatorAddedToOperatorSet(
   let operator = getOrCreateOperator(event.params.operator);
   let operatorSet = getOrCreateOperatorSet(
     event.params.operatorSet.avs,
-    event.params.operatorSet.id
+    event.params.operatorSet.id,
   );
 
   // Create pure event entity
   let joinEvent = new OperatorAddedEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -319,13 +312,12 @@ export function handleOperatorAddedToOperatorSet(
   operator.save();
   operatorSet.save();
   joinEvent.save();
-  incrementEventCounter("OperatorAddedEntity", event.block.number, event.block.timestamp);
 
   log.info("OperatorAddedToOperatorSet event saved: {}", [joinEvent.id]);
 }
 
 export function handleOperatorRemovedFromOperatorSet(
-  event: OperatorRemovedFromOperatorSet
+  event: OperatorRemovedFromOperatorSet,
 ): void {
   log.info("Processing OperatorRemovedFromOperatorSet event: {}", [
     event.transaction.hash.toHexString(),
@@ -335,12 +327,12 @@ export function handleOperatorRemovedFromOperatorSet(
   let operator = getOrCreateOperator(event.params.operator);
   let operatorSet = getOrCreateOperatorSet(
     event.params.operatorSet.avs,
-    event.params.operatorSet.id
+    event.params.operatorSet.id,
   );
 
   // Create pure event entity
   let removeEvent = new OperatorRemovedEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -358,7 +350,6 @@ export function handleOperatorRemovedFromOperatorSet(
   operator.save();
   operatorSet.save();
   removeEvent.save();
-  incrementEventCounter("OperatorRemovedEntity", event.block.number, event.block.timestamp);
 
   log.info("OperatorRemovedFromOperatorSet event saved: {}", [removeEvent.id]);
 }
@@ -368,7 +359,7 @@ export function handleOperatorRemovedFromOperatorSet(
 // ========================================
 
 export function handleStrategyAddedToOperatorSet(
-  event: StrategyAddedToOperatorSet
+  event: StrategyAddedToOperatorSet,
 ): void {
   log.info("Processing StrategyAddedToOperatorSet event: {}", [
     event.transaction.hash.toHexString(),
@@ -377,13 +368,13 @@ export function handleStrategyAddedToOperatorSet(
   // Create minimal lookup entities if needed
   let operatorSet = getOrCreateOperatorSet(
     event.params.operatorSet.avs,
-    event.params.operatorSet.id
+    event.params.operatorSet.id,
   );
   let strategy = getOrCreateStrategy(event.params.strategy);
 
   // Create pure event entity
   let strategyEvent = new StrategyOperatorSetEvent(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -402,13 +393,12 @@ export function handleStrategyAddedToOperatorSet(
   operatorSet.save();
   strategy.save();
   strategyEvent.save();
-  incrementEventCounter("StrategyOperatorSetEvent", event.block.number, event.block.timestamp);
 
   log.info("StrategyAddedToOperatorSet event saved: {}", [strategyEvent.id]);
 }
 
 export function handleStrategyRemovedFromOperatorSet(
-  event: StrategyRemovedFromOperatorSet
+  event: StrategyRemovedFromOperatorSet,
 ): void {
   log.info("Processing StrategyRemovedFromOperatorSet event: {}", [
     event.transaction.hash.toHexString(),
@@ -417,13 +407,13 @@ export function handleStrategyRemovedFromOperatorSet(
   // Create minimal lookup entities if needed
   let operatorSet = getOrCreateOperatorSet(
     event.params.operatorSet.avs,
-    event.params.operatorSet.id
+    event.params.operatorSet.id,
   );
   let strategy = getOrCreateStrategy(event.params.strategy);
 
   // Create pure event entity
   let strategyEvent = new StrategyOperatorSetEvent(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -442,7 +432,6 @@ export function handleStrategyRemovedFromOperatorSet(
   operatorSet.save();
   strategy.save();
   strategyEvent.save();
-  incrementEventCounter("StrategyOperatorSetEvent", event.block.number, event.block.timestamp);
 
   log.info("StrategyRemovedFromOperatorSet event saved: {}", [
     strategyEvent.id,
@@ -454,7 +443,7 @@ export function handleStrategyRemovedFromOperatorSet(
 // ========================================
 
 export function handleAVSMetadataURIUpdated(
-  event: AVSMetadataURIUpdated
+  event: AVSMetadataURIUpdated,
 ): void {
   log.info("Processing AVSMetadataURIUpdated event: {}", [
     event.transaction.hash.toHexString(),
@@ -465,7 +454,7 @@ export function handleAVSMetadataURIUpdated(
 
   // Create pure event entity
   let metadataUpdate = new AVSMetadataUpdate(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -482,7 +471,6 @@ export function handleAVSMetadataURIUpdated(
   // Save entities
   avs.save();
   metadataUpdate.save();
-  incrementEventCounter("AVSMetadataUpdate", event.block.number, event.block.timestamp);
 
   log.info("AVSMetadataURIUpdated event saved: {}", [metadataUpdate.id]);
 }
@@ -492,7 +480,7 @@ export function handleAVSMetadataURIUpdated(
 // ========================================
 
 export function handleRedistributionAddressSet(
-  event: RedistributionAddressSet
+  event: RedistributionAddressSet,
 ): void {
   log.info("Processing RedistributionAddressSet event: {}", [
     event.transaction.hash.toHexString(),
@@ -501,12 +489,12 @@ export function handleRedistributionAddressSet(
   // Create minimal lookup entity if needed
   let operatorSet = getOrCreateOperatorSet(
     event.params.operatorSet.avs,
-    event.params.operatorSet.id
+    event.params.operatorSet.id,
   );
 
   // Create pure event entity
   let redistributionEvent = new RedistributionAddressSetEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -524,7 +512,6 @@ export function handleRedistributionAddressSet(
   // Save entities
   operatorSet.save();
   redistributionEvent.save();
-  incrementEventCounter("RedistributionAddressSetEntity", event.block.number, event.block.timestamp);
 
   log.info("RedistributionAddressSet event saved: {}", [
     redistributionEvent.id,
@@ -541,7 +528,7 @@ export function handleAVSRegistrarSet(event: AVSRegistrarSet): void {
 
   // Create pure event entity
   let registrarEvent = new AVSRegistrarSetEntity(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields
@@ -558,7 +545,6 @@ export function handleAVSRegistrarSet(event: AVSRegistrarSet): void {
   // Save entities
   avs.save();
   registrarEvent.save();
-  incrementEventCounter("AVSRegistrarSetEntity", event.block.number, event.block.timestamp);
 
   log.info("AVSRegistrarSet event saved: {}", [registrarEvent.id]);
 }
@@ -596,7 +582,7 @@ function getOrCreateStrategy(address: Address): Strategy {
 
 function getOrCreateOperatorSet(
   avsAddress: Address,
-  operatorSetId: BigInt
+  operatorSetId: BigInt,
 ): OperatorSet {
   let id = avsAddress.toHexString() + "-" + operatorSetId.toString();
   let operatorSet = OperatorSet.load(id);

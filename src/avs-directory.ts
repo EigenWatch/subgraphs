@@ -12,14 +12,13 @@ import {
 } from "../generated/schema";
 
 import { log, Address, BigInt } from "@graphprotocol/graph-ts";
-import { incrementEventCounter } from "./utils";
 
 // ========================================
 // LEGACY M2 OPERATOR-AVS REGISTRATION
 // ========================================
 
 export function handleOperatorAVSRegistrationStatusUpdated(
-  event: OperatorAVSRegistrationStatusUpdatedEvent
+  event: OperatorAVSRegistrationStatusUpdatedEvent,
 ): void {
   log.info("Processing OperatorAVSRegistrationStatusUpdated event: {}", [
     event.transaction.hash.toHexString(),
@@ -37,7 +36,7 @@ export function handleOperatorAVSRegistrationStatusUpdated(
 
   // Create pure event entity with complete data
   let statusEvent = new OperatorAVSRegistrationStatusUpdated(
-    event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
   );
 
   // Base event fields (inherited from BaseEvent interface)
@@ -56,7 +55,6 @@ export function handleOperatorAVSRegistrationStatusUpdated(
   operator.save();
   avs.save();
   statusEvent.save();
-  incrementEventCounter("OperatorAVSRegistrationStatusUpdated", event.block.number, event.block.timestamp);
 
   log.info("OperatorAVSRegistrationStatusUpdated event saved: {}", [
     statusEvent.id,
