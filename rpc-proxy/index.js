@@ -98,53 +98,32 @@ const INFURA_CREDIT_COSTS = {
 const INFURA_DAILY_CREDIT_LIMIT = 3_000_000;
 const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours in ms
 
-// Infura throughput rate limiting (token bucket)
-// Free tier allows 500 credits/sec; we target 400/sec for safety
-const INFURA_CREDITS_PER_SECOND = 400;
-const INFURA_BUCKET_SIZE = 500; // max burst size in credits
+// Per-provider daily credit tracking
+// Reset logic: clear when the day changes
+let currentDay = new Date().getUTCDate();
+const providerCredits = {};
 
-// Per-provider token buckets for throughput limiting
-// Each bucket: { tokens, lastRefill }
-const providerBuckets = {};
-
-function getOrCreateBucket(providerName) {
-  if (!providerBuckets[providerName]) {
-    providerBuckets[providerName] = {
-      tokens: INFURA_BUCKET_SIZE,
-      lastRefill: Date.now(),
-    };
+function checkMidnightReset() {
+  const now = new Date();
+  const today = now.getUTCDate();
+  if (today !== currentDay) {
+    fastify.log.info(
+      { oldDay: currentDay, newDay: today },
+      "Midnight reset: clearing credits",
+    );
+    for (const provider in providerCredits) {
+      providerCredits[provider] = 0;
+    }
+    currentDay = today;
+    // Reset gauges
+    for (const providerName in providerCredits) {
+      infuraCreditsGauge.set({ provider: providerName }, 0);
+    }
   }
-  return providerBuckets[providerName];
 }
 
-function refillBucket(bucket) {
-  const now = Date.now();
-  const elapsed = (now - bucket.lastRefill) / 1000; // seconds
-  bucket.tokens = Math.min(
-    INFURA_BUCKET_SIZE,
-    bucket.tokens + elapsed * INFURA_CREDITS_PER_SECOND,
-  );
-  bucket.lastRefill = now;
-}
-
-// Returns ms to wait before sending a request costing `creditCost` to this provider.
-// Returns 0 if the request can be sent immediately.
-function getThrottleDelay(providerName, creditCost) {
-  const bucket = getOrCreateBucket(providerName);
-  refillBucket(bucket);
-
-  if (bucket.tokens >= creditCost) {
-    bucket.tokens -= creditCost;
-    return 0;
-  }
-
-  // Calculate how long to wait for enough tokens to accumulate
-  const deficit = creditCost - bucket.tokens;
-  const waitMs = Math.ceil((deficit / INFURA_CREDITS_PER_SECOND) * 1000);
-  // Reserve: set tokens to negative so concurrent requests also wait
-  bucket.tokens -= creditCost;
-  return waitMs;
-}
+// Rotation state for backfill logs
+let lastInfuraIndex = -1;
 
 const throttleDelayHistogram = new client.Histogram({
   name: "rpc_throttle_delay_seconds",
@@ -154,46 +133,27 @@ const throttleDelayHistogram = new client.Histogram({
   registers: [register],
 });
 
-// Per-provider rolling 24h credit tracking
-// Each provider stores an array of { timestamp, cost } entries
-const providerCredits = {};
-
-function pruneOldEntries(providerName) {
-  if (!providerCredits[providerName]) {
-    providerCredits[providerName] = [];
-  }
-  const cutoff = Date.now() - ROLLING_WINDOW_MS;
-  const entries = providerCredits[providerName];
-  // Remove entries older than 24 hours from the front
-  while (entries.length > 0 && entries[0].timestamp < cutoff) {
-    entries.shift();
-  }
-}
-
 function getCreditsConsumed(providerName) {
-  pruneOldEntries(providerName);
-  return providerCredits[providerName].reduce((sum, e) => sum + e.cost, 0);
+  checkMidnightReset();
+  return providerCredits[providerName] || 0;
 }
 
 function addCredits(providerName, method) {
-  pruneOldEntries(providerName);
+  checkMidnightReset();
   const cost = INFURA_CREDIT_COSTS[method] || INFURA_CREDIT_COSTS.default;
-  providerCredits[providerName].push({ timestamp: Date.now(), cost });
+  providerCredits[providerName] = (providerCredits[providerName] || 0) + cost;
 
-  const total = providerCredits[providerName].reduce(
-    (sum, e) => sum + e.cost,
-    0,
-  );
+  const total = providerCredits[providerName];
   infuraCreditsGauge.set({ provider: providerName }, total);
 
-  if (total >= INFURA_DAILY_CREDIT_LIMIT * 0.75) {
+  if (total >= INFURA_DAILY_CREDIT_LIMIT * 0.9) {
     fastify.log.warn(
       {
         provider: providerName,
         credits: total,
         limit: INFURA_DAILY_CREDIT_LIMIT,
       },
-      "Infura credit usage at 75%+ of rolling 24h limit",
+      "Infura credit usage at 90%+ of daily limit",
     );
   }
 }
@@ -260,7 +220,7 @@ const PROVIDERS = [
     headers: () => ({}),
     unwrap: false,
     backfillRole: "logs",
-    backfillWeight: 50,
+    backfillWeight: 33,
     normalWeight: 12,
   },
   {
@@ -270,7 +230,17 @@ const PROVIDERS = [
     headers: () => ({}),
     unwrap: false,
     backfillRole: "logs",
-    backfillWeight: 50,
+    backfillWeight: 33,
+    normalWeight: 12,
+  },
+  {
+    name: "infura3",
+    url: process.env.INFURA_RPC_URL_3,
+    apiKey: null,
+    headers: () => ({}),
+    unwrap: false,
+    backfillRole: "logs",
+    backfillWeight: 34,
     normalWeight: 12,
   },
   // Public free RPCs - only used in normal mode (NOT during backfill)
@@ -377,9 +347,20 @@ function getProviderOrder(method) {
   // If all providers in a group fail, the request fails — graph-node retries naturally
   // This prevents Alchemy eth_getLogs errors from making graph-node shrink block ranges
   if (method === "eth_getLogs") {
-    return getBackfillProviders("logs").filter(
+    const logsProviders = getBackfillProviders("logs").filter(
       (p) => !isProviderOverDailyLimit(p),
     );
+    if (logsProviders.length === 0) return [];
+
+    // Simple round-robin rotation
+    lastInfuraIndex = (lastInfuraIndex + 1) % logsProviders.length;
+
+    // Start with the next one in line, followed by the rest
+    const ordered = [];
+    for (let i = 0; i < logsProviders.length; i++) {
+      ordered.push(logsProviders[(lastInfuraIndex + i) % logsProviders.length]);
+    }
+    return ordered;
   } else {
     return getBackfillProviders("general");
   }
@@ -420,22 +401,13 @@ async function makeRequest(provider, body, method) {
     ...provider.headers(provider.apiKey),
   };
 
-  // Throttle Infura requests to stay under 500 credits/sec
+  // Delay Infura requests by 2 seconds to avoid rate limits
   if (isInfuraProvider(provider)) {
-    const creditCost =
-      INFURA_CREDIT_COSTS[method] || INFURA_CREDIT_COSTS.default;
-    const delayMs = getThrottleDelay(provider.name, creditCost);
-    if (delayMs > 0) {
-      throttleDelayHistogram.observe(
-        { provider: provider.name },
-        delayMs / 1000,
-      );
-      fastify.log.debug(
-        { provider: provider.name, method, delayMs, creditCost },
-        "Throttling request to stay within rate limit",
-      );
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
+    fastify.log.debug(
+      { provider: provider.name, method },
+      "Applying 2s delay to Infura request",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
 
   const timer = requestDuration.startTimer({ provider: provider.name, method });
@@ -604,8 +576,6 @@ fastify.get("/health", async () => {
           (getCreditsConsumed(p.name) / INFURA_DAILY_CREDIT_LIMIT) *
           100
         ).toFixed(1) + "%",
-      bucketTokens: Math.round(bucket.tokens),
-      rateLimit: `${INFURA_CREDITS_PER_SECOND} credits/sec`,
     };
   }
 
@@ -706,7 +676,6 @@ fastify.post("/", async (request, reply) => {
         lastError = err;
       }
     }
-
   } else {
     // Normal mode: try providers in order (thebuidl first, then fallbacks)
     for (const provider of providers) {

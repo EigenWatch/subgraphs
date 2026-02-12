@@ -13,7 +13,7 @@ dataSources:
     source:
       address: "0x39053D51B77DC0d36036Fc1fCc8Cb819df8Ef37A"
       abi: DelegationManager
-      startBlock: 22600000
+      startBlock: 17445563
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -81,7 +81,7 @@ dataSources:
     source:
       address: "0x948a420b8CC1d6BFd0B6087C2E7c344a2CD0bc39"
       abi: AllocationManager
-      startBlock: 22600000
+      startBlock: 22218956
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -157,7 +157,7 @@ dataSources:
     source:
       address: "0x7750d328b314EfFa365A0402CcfD489B80B0adda"
       abi: RewardsCoordinator
-      startBlock: 22600000
+      startBlock: 20341793
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -236,7 +236,7 @@ dataSources:
     source:
       address: "0x858646372CC42E1A627fcE94aa7A7033e7CF075A"
       abi: StrategyManager
-      startBlock: 22600000
+      startBlock: 17445564
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -287,7 +287,7 @@ dataSources:
     source:
       address: "0x135dda560e946695d6f155dacafc6f1f25c1f5af"
       abi: AVSDirectory
-      startBlock: 22600000
+      startBlock: 19492759
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -318,7 +318,7 @@ dataSources:
     source:
       address: "0x91E677b07F7AF907ec9a428aafA9fc14a0d3A338"
       abi: EigenPodManager
-      startBlock: 22600000
+      startBlock: 17445564
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
