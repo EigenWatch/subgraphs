@@ -4,9 +4,9 @@ const Fastify = require("fastify");
 const { Pool } = require("pg");
 
 // ─── Configuration ──────────────────────────────────────
-const SUBGRAPH_NAME = process.env.SUBGRAPH_NAME || "eigenwatch-ethereum";
 const CACHE_TTL_MS = parseInt(process.env.CACHE_TTL_MS || "60000", 10); // 60s default
 const PORT = parseInt(process.env.PORT || "3001", 10);
+const SCHEMA_RETRY_INTERVAL_MS = 10000; // 10s between retries
 
 const pool = new Pool({
   host: process.env.POSTGRES_HOST || "postgres",
@@ -22,45 +22,27 @@ let schemaDiscoveredAt = 0;
 
 /**
  * Discover the sgdN schema name for our subgraph deployment.
- * Graph Node stores the mapping in public.deployment_schemas.
- * We find the latest version via subgraphs.subgraph_version.
+ * Uses only `public.deployment_schemas` which is the most reliable
+ * table across all Graph Node versions.
+ * Picks the most recently created schema (highest sgdN number).
  */
 async function discoverSchema() {
   const client = await pool.connect();
   try {
-    // First, find the deployment hash for our subgraph name
-    const versionResult = await client.query(
-      `
-      SELECT sv.deployment
-      FROM subgraphs.subgraph_version sv
-      JOIN subgraphs.subgraph s ON (s.current_version = sv.id OR s.pending_version = sv.id)
-      WHERE s.name = $1
-      ORDER BY sv.created_at DESC
+    // Query deployment_schemas directly — works across all Graph Node versions
+    const result = await client.query(`
+      SELECT name, subgraph
+      FROM public.deployment_schemas
+      ORDER BY created_at DESC
       LIMIT 1
-    `,
-      [SUBGRAPH_NAME],
-    );
+    `);
 
-    if (versionResult.rows.length === 0) {
-      throw new Error(`No deployment found for subgraph: ${SUBGRAPH_NAME}`);
+    if (result.rows.length === 0) {
+      throw new Error("No deployment schemas found. Is the subgraph deployed?");
     }
 
-    const deploymentHash = versionResult.rows[0].deployment;
-
-    // Now find the schema name (sgdN) for this deployment
-    const schemaResult = await client.query(
-      `
-      SELECT name FROM public.deployment_schemas
-      WHERE subgraph = $1
-    `,
-      [deploymentHash],
-    );
-
-    if (schemaResult.rows.length === 0) {
-      throw new Error(`No schema found for deployment: ${deploymentHash}`);
-    }
-
-    schemaName = schemaResult.rows[0].name;
+    schemaName = result.rows[0].name;
+    const deploymentHash = result.rows[0].subgraph;
     schemaDiscoveredAt = Date.now();
     console.log(
       `Schema discovered: ${schemaName} (deployment: ${deploymentHash})`,
@@ -68,6 +50,21 @@ async function discoverSchema() {
     return schemaName;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Try to discover schema with retries. Does not throw — logs errors and returns false.
+ */
+async function tryDiscoverSchema() {
+  try {
+    await discoverSchema();
+    return true;
+  } catch (err) {
+    console.error(
+      `Schema discovery failed: ${err.message}. Will retry in ${SCHEMA_RETRY_INTERVAL_MS / 1000}s...`,
+    );
+    return false;
   }
 }
 
@@ -128,7 +125,10 @@ async function fetchCounts() {
 // ─── Fastify Server ─────────────────────────────────────
 const app = Fastify({ logger: true });
 
-app.get("/health", async () => ({ status: "ok" }));
+app.get("/health", async () => ({
+  status: schemaName ? "ok" : "waiting_for_schema",
+  schema: schemaName || null,
+}));
 
 /**
  * GET /counts
@@ -137,9 +137,16 @@ app.get("/health", async () => ({ status: "ok" }));
  *
  * Optional query params:
  *   ?exact=true  — use COUNT(*) for exact counts (slower)
- *   ?entity=Operator,AVS  — only count specific entities
+ *   ?entity=operator,avs  — only count specific entities
  */
 app.get("/counts", async (request, reply) => {
+  if (!schemaName) {
+    reply.code(503);
+    return {
+      error: "Schema not yet discovered. The subgraph may still be deploying.",
+    };
+  }
+
   const exact = request.query.exact === "true";
   const entityFilter = request.query.entity
     ? request.query.entity.split(",").map((e) => e.trim().toLowerCase())
@@ -165,8 +172,6 @@ app.get("/counts", async (request, reply) => {
 
   if (exact) {
     // Exact counts using COUNT(*) — slower but precise
-    if (!schemaName) await discoverSchema();
-
     const client = await pool.connect();
     try {
       const tablesResult = await client.query(
@@ -221,13 +226,17 @@ app.get("/counts", async (request, reply) => {
 
 // ─── Startup ────────────────────────────────────────────
 async function start() {
-  try {
-    await discoverSchema();
-    await app.listen({ port: PORT, host: "0.0.0.0" });
-    console.log(`Counts API listening on port ${PORT}`);
-  } catch (err) {
-    console.error("Failed to start:", err);
-    process.exit(1);
+  // Start the HTTP server immediately (don't block on schema discovery)
+  await app.listen({ port: PORT, host: "0.0.0.0" });
+  console.log(`Counts API listening on port ${PORT}`);
+
+  // Try to discover schema — retry in background if it fails
+  const discovered = await tryDiscoverSchema();
+  if (!discovered) {
+    const retryInterval = setInterval(async () => {
+      const ok = await tryDiscoverSchema();
+      if (ok) clearInterval(retryInterval);
+    }, SCHEMA_RETRY_INTERVAL_MS);
   }
 }
 
