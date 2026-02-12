@@ -103,6 +103,10 @@ const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours in ms
 let currentDay = new Date().getUTCDate();
 const providerCredits = {};
 
+// Track when each provider is next available to ensure sequential requests
+const providerNextAvailable = {};
+const GLOBAL_REQUEST_DELAY = 4000; // 4 seconds between requests per key
+
 function checkMidnightReset() {
   const now = new Date();
   const today = now.getUTCDate();
@@ -401,13 +405,23 @@ async function makeRequest(provider, body, method) {
     ...provider.headers(provider.apiKey),
   };
 
-  // Delay Infura requests by 2 seconds to avoid rate limits
+  // Delay Infura requests to avoid rate limits using a global sequential lock
   if (isInfuraProvider(provider)) {
-    fastify.log.debug(
-      { provider: provider.name, method },
-      "Applying 4s delay to Infura request",
-    );
-    await new Promise((resolve) => setTimeout(resolve, 4000));
+    const now = Date.now();
+    const nextAvailable = providerNextAvailable[provider.name] || 0;
+    const waitTime = Math.max(0, nextAvailable - now);
+
+    // Schedule the next request for this provider
+    providerNextAvailable[provider.name] =
+      Math.max(now, nextAvailable) + GLOBAL_REQUEST_DELAY;
+
+    if (waitTime > 0) {
+      fastify.log.debug(
+        { provider: provider.name, method, waitTime },
+        "Sequentially throttling Infura request",
+      );
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
+    }
   }
 
   const timer = requestDuration.startTimer({ provider: provider.name, method });
