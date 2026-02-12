@@ -34,9 +34,9 @@ services:
       ipfs: "ipfs:5001"
       ethereum: "mainnet:http://rpc-proxy:3000"
       GRAPH_LOG: info
-      # Max block range for eth_getLogs requests (Infura supports up to 10k blocks)
-      GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE: 10000
-      GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE: 10000
+      # Block range for eth_getLogs requests optimized for Infura
+      GRAPH_ETHEREUM_TARGET_BLOCK_RANGE_SIZE: 2000
+      GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE: 7000
       # Query limits (defaults: 1000/5000)
       GRAPH_GRAPHQL_MAX_FIRST: 5000
       GRAPH_GRAPHQL_MAX_SKIP: 10000
