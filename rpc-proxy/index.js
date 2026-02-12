@@ -405,9 +405,9 @@ async function makeRequest(provider, body, method) {
   if (isInfuraProvider(provider)) {
     fastify.log.debug(
       { provider: provider.name, method },
-      "Applying 2s delay to Infura request",
+      "Applying 4s delay to Infura request",
     );
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 4000));
   }
 
   const timer = requestDuration.startTimer({ provider: provider.name, method });
