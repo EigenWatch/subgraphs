@@ -48,6 +48,7 @@ services:
       - ./data/ipfs:/data/ipfs
   postgres:
     image: postgres:15
+    shm_size: "2gb"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
