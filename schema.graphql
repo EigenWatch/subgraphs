@@ -41,6 +41,8 @@ type Operator @entity(immutable: false) {
     @derivedFrom(field: "operator")
   delegationApproverUpdates: [DelegationApproverUpdated!]!
     @derivedFrom(field: "operator")
+  keyRegistrationEvents: [KeyRegistrationEvent!]!
+    @derivedFrom(field: "operator")
 }
 
 type Staker @entity(immutable: false) {
@@ -79,6 +81,9 @@ type AVS @entity(immutable: false) {
   metadataUpdateEvents: [AVSMetadataUpdate!]! @derivedFrom(field: "avs")
   operatorSetCreationEvents: [OperatorSetCreated!]! @derivedFrom(field: "avs")
   registrarSetEvents: [AVSRegistrarSet!]! @derivedFrom(field: "avs")
+  taskCreatedEvents: [TaskCreated!]! @derivedFrom(field: "avs")
+  executorOperatorSetRegistrationEvents: [ExecutorOperatorSetRegistered!]!
+    @derivedFrom(field: "avs")
 }
 
 type Strategy @entity(immutable: false) {
@@ -116,6 +121,14 @@ type OperatorSet @entity(immutable: false) {
   redistributionEvents: [RedistributionAddressSet!]!
     @derivedFrom(field: "operatorSet")
   operatorDirectedRewardsEvents: [OperatorDirectedOperatorSetRewardsSubmission!]!
+    @derivedFrom(field: "operatorSet")
+  slasherUpdatedEvents: [SlasherUpdated!]! @derivedFrom(field: "operatorSet")
+  slasherMigratedEvents: [SlasherMigrated!]! @derivedFrom(field: "operatorSet")
+  metadataPublishedEvents: [OperatorSetMetadataPublished!]!
+    @derivedFrom(field: "operatorSet")
+  releasePublishedEvents: [ReleasePublished!]! @derivedFrom(field: "operatorSet")
+  keyConfig: [OperatorSetKeyConfig!]! @derivedFrom(field: "operatorSet")
+  keyRegistrationEvents: [KeyRegistrationEvent!]!
     @derivedFrom(field: "operatorSet")
 }
 
@@ -452,6 +465,237 @@ type StrategyOperatorSetEvent implements BaseEvent @entity(immutable: true) {
   operatorSet: OperatorSet!
   strategy: Strategy!
   eventType: StrategyOperatorSetEventType!
+}
+
+type SlasherUpdated implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operatorSet: OperatorSet!
+  slasher: Bytes!
+  effectBlock: BigInt! # delayed — takes effect at this block
+}
+
+type SlasherMigrated implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operatorSet: OperatorSet!
+  slasher: Bytes! # instant effect (migration)
+}
+
+# PERMISSION CONTROLLER EVENTS
+
+type PermissionAdminEvent implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data — account is any address (AVS, operator, or other contract)
+  account: Bytes!
+  admin: Bytes!
+  eventType: AdminEventType!
+}
+
+type PermissionAppointeeEvent implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  account: Bytes!
+  appointee: Bytes!
+  target: Bytes!
+  selector: Bytes! # bytes4 function selector
+  eventType: AppointeeEventType!
+}
+
+# RELEASE MANAGER EVENTS
+
+type OperatorSetMetadataPublished implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operatorSet: OperatorSet!
+  metadataURI: String!
+}
+
+type ReleasePublished implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operatorSet: OperatorSet!
+  releaseId: BigInt!
+  upgradeByTime: BigInt! # Unix timestamp; 0 means instant upgrade required
+  artifacts: [ReleaseArtifact!]! @derivedFrom(field: "release")
+}
+
+type ReleaseArtifact @entity(immutable: true) {
+  id: ID! # releasePublished.id + "-" + artifactIndex
+  release: ReleasePublished!
+  artifactIndex: Int!
+  digest: Bytes! # content hash for integrity verification
+  registry: String! # where to pull (Docker Hub, IPFS, OCI)
+}
+
+# KEY REGISTRAR EVENTS
+
+type OperatorSetKeyConfig @entity(immutable: false) {
+  id: ID! # same as OperatorSet.id (avs-operatorSetId)
+  operatorSet: OperatorSet!
+  curveType: CurveType!
+  activeKeyCount: BigInt!
+  configuredAtBlock: BigInt!
+  configuredAtTimestamp: BigInt!
+}
+
+type KeyRegistrationEvent implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  operatorSet: OperatorSet!
+  operator: Operator!
+  curveType: CurveType!
+  pubkey: Bytes # populated on REGISTERED; empty on DEREGISTERED
+  eventType: KeyEventType!
+}
+
+# TASK MAILBOX EVENTS
+
+type ExecutorOperatorSetRegistered implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  caller: Bytes!
+  avs: AVS!
+  executorOperatorSetId: BigInt!
+  isRegistered: Boolean!
+}
+
+type ExecutorOperatorSetTaskConfigSet implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  caller: Bytes!
+  avs: AVS!
+  executorOperatorSetId: BigInt!
+  config: String! # JSON-encoded ExecutorOperatorSetTaskConfig
+}
+
+type TaskCreated implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  creator: Bytes!
+  taskHash: Bytes!
+  avs: AVS!
+  executorOperatorSetId: BigInt!
+  operatorTableReferenceTimestamp: BigInt!
+  refundCollector: Bytes!
+  avsFee: BigInt!
+  taskDeadline: BigInt!
+  payload: Bytes!
+}
+
+type TaskVerified implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  aggregator: Bytes!
+  taskHash: Bytes!
+  avs: AVS!
+  executorOperatorSetId: BigInt!
+  executorCert: Bytes!
+  result: Bytes!
+}
+
+type TaskFeeRefunded implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  refundCollector: Bytes!
+  taskHash: Bytes!
+  avsFee: BigInt!
+}
+
+type TaskMailboxFeeSplitSet implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  feeSplit: Int! # basis points
+}
+
+type TaskMailboxFeeSplitCollectorSet implements BaseEvent @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  contractAddress: Bytes!
+
+  # Event data
+  feeSplitCollector: Bytes!
 }
 
 # REWARDS COORDINATOR EVENTS
@@ -970,4 +1214,27 @@ enum StrategyWhitelistEventType {
 enum PodSharesUpdateType {
   SHARES_UPDATED
   NEW_TOTAL_SHARES
+}
+
+enum AdminEventType {
+  ADMIN_SET
+  ADMIN_REMOVED
+  PENDING_ADMIN_ADDED
+  PENDING_ADMIN_REMOVED
+}
+
+enum AppointeeEventType {
+  APPOINTEE_SET
+  APPOINTEE_REMOVED
+}
+
+enum CurveType {
+  NONE
+  ECDSA
+  BN254
+}
+
+enum KeyEventType {
+  REGISTERED
+  DEREGISTERED
 }

@@ -105,6 +105,8 @@ dataSources:
         - OperatorRemovedFromOperatorSet
         - RedistributionAddressSet
         - StrategyOperatorSetEvent
+        - SlasherUpdated
+        - SlasherMigrated
       abis:
         - name: AllocationManager
           file: ./abis/AllocationManager.json
@@ -146,6 +148,12 @@ dataSources:
           handler: handleRedistributionAddressSet
         - event: AVSRegistrarSet(address,address)
           handler: handleAVSRegistrarSet
+
+        # Slasher governance (who can slash each operator set)
+        - event: SlasherUpdated((address,uint32),address,uint32)
+          handler: handleSlasherUpdated
+        - event: SlasherMigrated((address,uint32),address)
+          handler: handleSlasherMigrated
       file: ./src/allocation-manager.ts
 
   # ========================================
@@ -373,6 +381,154 @@ dataSources:
         - event: ProofTimestampSetterSet(address)
           handler: handleProofTimestampSetterSet
       file: ./src/eigen-pod-manager.ts
+  # ========================================
+  # PERMISSION CONTROLLER - AVS/operator governance
+  # ========================================
+  - kind: ethereum
+    name: PermissionController
+    network: mainnet
+    source:
+      address: "0x25E5F8B1E7aDf44518d35D5B2271f114e081f0E5"
+      abi: PermissionController
+      startBlock: 22218956 # CONFIRM: check Etherscan for exact deployment block
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - PermissionAdminEvent
+        - PermissionAppointeeEvent
+      abis:
+        - name: PermissionController
+          file: ./abis/PermissionController.json
+      eventHandlers:
+        - event: AdminSet(indexed address,address)
+          handler: handleAdminSet
+        - event: AdminRemoved(indexed address,address)
+          handler: handleAdminRemoved
+        - event: PendingAdminAdded(indexed address,address)
+          handler: handlePendingAdminAdded
+        - event: PendingAdminRemoved(indexed address,address)
+          handler: handlePendingAdminRemoved
+        - event: AppointeeSet(indexed address,indexed address,address,bytes4)
+          handler: handleAppointeeSet
+        - event: AppointeeRemoved(indexed address,indexed address,address,bytes4)
+          handler: handleAppointeeRemoved
+      file: ./src/permission-controller.ts
+
+  # ========================================
+  # NOT YET DEPLOYED (as of v1.4.1 — April 2026)
+  # ========================================
+  # The following three contracts are first-party EigenLayer contracts (part of the
+  # EigenCloud / multichain release) that exist in the eigenlayer-contracts repo and
+  # have fully implemented handlers and ABIs in this subgraph, but have NOT yet been
+  # deployed to Ethereum mainnet. They are omitted here until deployment addresses
+  # are confirmed.
+  #
+  # To activate each source:
+  #   1. Get the deployed proxy address and deployment block from Etherscan or the
+  #      EigenLayer mainnet deployment config (script/configs/mainnet/mainnet-addresses.config.json)
+  #   2. Uncomment the data source block below
+  #   3. Fill in `address` and `startBlock` with the real values
+  #
+  # ---- ReleaseManager (per-operator-set software releases) ----
+  # - kind: ethereum
+  #   name: ReleaseManager
+  #   network: mainnet
+  #   source:
+  #     address: "TODO"        # fill with deployed proxy address
+  #     abi: ReleaseManager
+  #     startBlock: 0          # fill with deployment block
+  #   mapping:
+  #     kind: ethereum/events
+  #     apiVersion: 0.0.9
+  #     language: wasm/assemblyscript
+  #     entities:
+  #       - OperatorSet
+  #       - OperatorSetMetadataPublished
+  #       - ReleasePublished
+  #       - ReleaseArtifact
+  #     abis:
+  #       - name: ReleaseManager
+  #         file: ./abis/ReleaseManager.json
+  #     eventHandlers:
+  #       - event: MetadataURIPublished((address,uint32),string)
+  #         handler: handleMetadataURIPublished
+  #       - event: ReleasePublished(indexed (address,uint32),indexed uint256,((bytes32,string)[],uint32))
+  #         handler: handleReleasePublished
+  #     file: ./src/release-manager.ts
+  #
+  # ---- KeyRegistrar (cryptographic key lifecycle per operator set) ----
+  # - kind: ethereum
+  #   name: KeyRegistrar
+  #   network: mainnet
+  #   source:
+  #     address: "TODO"        # fill with deployed proxy address
+  #     abi: KeyRegistrar
+  #     startBlock: 0          # fill with deployment block
+  #   mapping:
+  #     kind: ethereum/events
+  #     apiVersion: 0.0.9
+  #     language: wasm/assemblyscript
+  #     entities:
+  #       - Operator
+  #       - OperatorSet
+  #       - OperatorSetKeyConfig
+  #       - KeyRegistrationEvent
+  #     abis:
+  #       - name: KeyRegistrar
+  #         file: ./abis/KeyRegistrar.json
+  #     eventHandlers:
+  #       - event: OperatorSetConfigured((address,uint32),uint8)
+  #         handler: handleOperatorSetConfigured
+  #       - event: KeyRegistered((address,uint32),indexed address,uint8,bytes)
+  #         handler: handleKeyRegistered
+  #       - event: KeyDeregistered((address,uint32),indexed address,uint8)
+  #         handler: handleKeyDeregistered
+  #     file: ./src/key-registrar.ts
+  #
+  # ---- TaskMailbox (EigenCloud task economy) ----
+  # - kind: ethereum
+  #   name: TaskMailbox
+  #   network: mainnet
+  #   source:
+  #     address: "TODO"        # fill with deployed proxy address
+  #     abi: TaskMailbox
+  #     startBlock: 0          # fill with deployment block
+  #   mapping:
+  #     kind: ethereum/events
+  #     apiVersion: 0.0.9
+  #     language: wasm/assemblyscript
+  #     entities:
+  #       - AVS
+  #       - ExecutorOperatorSetRegistered
+  #       - ExecutorOperatorSetTaskConfigSet
+  #       - TaskCreated
+  #       - TaskVerified
+  #       - TaskFeeRefunded
+  #       - TaskMailboxFeeSplitSet
+  #       - TaskMailboxFeeSplitCollectorSet
+  #     abis:
+  #       - name: TaskMailbox
+  #         file: ./abis/TaskMailbox.json
+  #     eventHandlers:
+  #       - event: ExecutorOperatorSetRegistered(indexed address,indexed address,indexed uint32,bool)
+  #         handler: handleExecutorOperatorSetRegistered
+  #       - event: ExecutorOperatorSetTaskConfigSet(indexed address,indexed address,indexed uint32,(address,uint96,address,uint8,address,(uint8,bytes),bytes))
+  #         handler: handleExecutorOperatorSetTaskConfigSet
+  #         # config tuple: (taskHook,taskSLA,feeToken,curveType,feeCollector,(consensusType,value),taskMetadata)
+  #       - event: TaskCreated(indexed address,indexed bytes32,indexed address,uint32,uint32,address,uint96,uint256,bytes)
+  #         handler: handleTaskCreated
+  #       - event: TaskVerified(indexed address,indexed bytes32,indexed address,uint32,bytes,bytes)
+  #         handler: handleTaskVerified
+  #       - event: FeeRefunded(indexed address,indexed bytes32,uint96)
+  #         handler: handleFeeRefunded
+  #       - event: FeeSplitSet(uint16)
+  #         handler: handleFeeSplitSet
+  #       - event: FeeSplitCollectorSet(indexed address)
+  #         handler: handleFeeSplitCollectorSet
+  #     file: ./src/task-mailbox.ts
+
 templates:
   - kind: ethereum/contract
     name: Strategy

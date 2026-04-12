@@ -12,6 +12,8 @@ import {
   AVSMetadataURIUpdated,
   RedistributionAddressSet,
   AVSRegistrarSet,
+  SlasherUpdated,
+  SlasherMigrated,
 } from "../generated/AllocationManager/AllocationManager";
 
 import {
@@ -33,6 +35,8 @@ import {
   AVSRegistrarSet as AVSRegistrarSetEntity,
   AVSMetadataUpdate,
   StrategyOperatorSetEvent,
+  SlasherUpdated as SlasherUpdatedEntity,
+  SlasherMigrated as SlasherMigratedEntity,
 } from "../generated/schema";
 
 import { log, Address, BigInt } from "@graphprotocol/graph-ts";
@@ -596,4 +600,67 @@ function getOrCreateOperatorSet(
     avs.save();
   }
   return operatorSet;
+}
+
+// ========================================
+// SLASHER GOVERNANCE EVENTS
+// ========================================
+
+export function handleSlasherUpdated(event: SlasherUpdated): void {
+  log.info("Processing SlasherUpdated event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
+
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id,
+  );
+
+  let entity = new SlasherUpdatedEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
+  );
+
+  entity.transactionHash = event.transaction.hash;
+  entity.logIndex = event.logIndex;
+  entity.blockNumber = event.block.number;
+  entity.blockTimestamp = event.block.timestamp;
+  entity.contractAddress = event.address;
+
+  entity.operatorSet = operatorSet.id;
+  entity.slasher = event.params.slasher;
+  entity.effectBlock = event.params.effectBlock;
+
+  operatorSet.save();
+  entity.save();
+
+  log.info("SlasherUpdated event saved: {}", [entity.id]);
+}
+
+export function handleSlasherMigrated(event: SlasherMigrated): void {
+  log.info("Processing SlasherMigrated event: {}", [
+    event.transaction.hash.toHexString(),
+  ]);
+
+  let operatorSet = getOrCreateOperatorSet(
+    event.params.operatorSet.avs,
+    event.params.operatorSet.id,
+  );
+
+  let entity = new SlasherMigratedEntity(
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString(),
+  );
+
+  entity.transactionHash = event.transaction.hash;
+  entity.logIndex = event.logIndex;
+  entity.blockNumber = event.block.number;
+  entity.blockTimestamp = event.block.timestamp;
+  entity.contractAddress = event.address;
+
+  entity.operatorSet = operatorSet.id;
+  entity.slasher = event.params.slasher;
+
+  operatorSet.save();
+  entity.save();
+
+  log.info("SlasherMigrated event saved: {}", [entity.id]);
 }
